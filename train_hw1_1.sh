@@ -6,4 +6,4 @@
 #  echo "parameter $i --> ${!i}"
 #done
 
-python3 main.py ${1} ${2} 
+python3 train.py ${1} ${2} 
