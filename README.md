@@ -23,6 +23,10 @@ You can run the following command to run virtual environment, and install all th
 
 Note that using packages with different versions will very likely lead to compatibility issues, so make sure that you install the correct version if one is specified above. E-mail or ask the TAs first if you want to import other packages.
 
+
+### Argparse
+https://machinelearningmastery.com/command-line-arguments-for-your-python-script/
+
 # Q&A
 If you have any problems related to HW1, you may
 - Use TA hours
