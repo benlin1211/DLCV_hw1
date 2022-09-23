@@ -29,7 +29,7 @@ https://machinelearningmastery.com/command-line-arguments-for-your-python-script
 
 ### Run Training Code
 
-    bash ./train_hw1_1.sh ./hw1_data/hw1_data/p1_data/train_50/
+    bash ./train_hw1_1.sh ./hw1_data/hw1_data/p1_data/train_50 .
 
 
 # Q&A
