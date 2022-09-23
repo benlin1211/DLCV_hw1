@@ -12,10 +12,9 @@ class ImageDataset(Dataset):
     def __init__(self, path, files = None):
         super(ImageDataset).__init__()
         self.path = path
-        self.files = sorted([os.path.join(path,x) for x in os.listdir(path) if x.endswith(".jpg")])
+        self.files = sorted([os.path.join(path,x) for x in os.listdir(path) if x.endswith(".png")])
         if files != None:
             self.files = files
-        print(f"One {path} sample",self.files[0])
 
     def __len__(self):
         return len(self.files)
@@ -31,10 +30,7 @@ class ImageDataset(Dataset):
             label = -1 # test has no label
             # print(" test has no label")
         return im,label
-
-
-
-
+        
 
 def fix_random_seed():
     myseed = 6666  # set a random seed for reproducibility
@@ -44,8 +40,6 @@ def fix_random_seed():
     torch.manual_seed(myseed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(myseed)
-
-
 
 
 if __name__ == '__main__':
@@ -62,3 +56,5 @@ if __name__ == '__main__':
 
     print(args.src)
     print(args.checkpth)
+    image_dataset = ImageDataset(args.src)
+    print(len(image_dataset))
