@@ -9,15 +9,14 @@ import random
 
 
 class ImageDataset(Dataset):
-    def __init__(self, path, tfm=test_tfm, files = None):
+    def __init__(self, path, files = None):
         super(ImageDataset).__init__()
         self.path = path
         self.files = sorted([os.path.join(path,x) for x in os.listdir(path) if x.endswith(".jpg")])
         if files != None:
             self.files = files
         print(f"One {path} sample",self.files[0])
-        self.transform = tfm
-  
+
     def __len__(self):
         return len(self.files)
   
