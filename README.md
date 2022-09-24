@@ -18,11 +18,16 @@ This homework should be done using python3.8. For a list of packages you are all
 You can run the following command to run virtual environment, and install all the packages listed in the requirements.txt:
 
     conda create --name DLCV-hw1 python=3.8
-    source activate DLCV-hw1
+    conda activate DLCV-hw1
     pip3 install -r requirements.txt
 
 Note that using packages with different versions will very likely lead to compatibility issues, so make sure that you install the correct version if one is specified above. E-mail or ask the TAs first if you want to import other packages.
 
+### List all environments
+conda info --envs
+
+### Remove an environment
+conda env remove -n DLCV-hw1
 
 ### Argparse
 https://machinelearningmastery.com/command-line-arguments-for-your-python-script/
