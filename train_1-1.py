@@ -10,6 +10,16 @@ import tqdm
 from sklearn.model_selection import KFold
 
 
+def fix_random_seed():
+    myseed = 6666  # set a random seed for reproducibility
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    np.random.seed(myseed)
+    torch.manual_seed(myseed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(myseed)
+        
+
 class ImageDataset(Dataset):
     def __init__(self, path, files = None):
         super(ImageDataset).__init__()
@@ -121,15 +131,6 @@ def validate(model, criterion, valid_loader):
 
     return valid_loss, valid_acc
 
-
-def fix_random_seed():
-    myseed = 6666  # set a random seed for reproducibility
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-    np.random.seed(myseed)
-    torch.manual_seed(myseed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(myseed)
 
 # Model B
 class Classifier(nn.Module):
@@ -272,20 +273,29 @@ if __name__ == '__main__':
             scheduler.step()
                 
             # ---------- Validation ----------
-            valid_loss, valid_acc = validate(model, criterion, optimizer, valid_loader)
+            valid_loss, valid_acc = validate(model, criterion, valid_loader)
             print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f}")
 
             # update logs
             if valid_acc > best_acc:
-                with open(f"./{model_option}_log.txt","a"):
+                with open(f"./hw1-1_{model_option}_log.txt","a"):
                     print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f} -> best")
             else:
                 with open(f"./hw1-1_{model_option}_log.txt","a"):
                     print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f}")
 
-
             # save models
-
+            if valid_acc > best_acc:
+                print(f"Best model found at epoch {epoch}, saving model")
+                torch.save(model.state_dict(), f"{model_path}_fondation.ckpt") 
+                best_acc = valid_acc
+                stale = 0
+            else:
+                stale += 1
+                print(f"No improvment {stale}")
+                if stale > patience:
+                    print(f"No improvment {patience} consecutive epochs, early stopping")
+                    break
 
             # update epoch record
             epoch_record = epoch_record + 1  
