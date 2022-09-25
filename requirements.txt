@@ -6,4 +6,6 @@ scipy==1.9.1
 torch==1.12.1
 torchvision==0.13.1
 gdown
-sklearn
+sklearn==1.1.2
+pandas
+
