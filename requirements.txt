@@ -8,4 +8,5 @@ torchvision==0.13.1
 gdown
 sklearn==1.1.2
 pandas
+PIL
 
