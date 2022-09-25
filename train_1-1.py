@@ -4,12 +4,15 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
+from torchvision.models import resnet50
+
 from torch.utils.data import ConcatDataset, DataLoader, Subset, Dataset
 import random
 from tqdm import tqdm
 from sklearn.model_selection import KFold
 import pandas
 from PIL import Image
+
 
 def fix_random_seed():
     myseed = 6666  # set a random seed for reproducibility
@@ -138,42 +141,37 @@ def validate(model, criterion, valid_loader, device, lamb):
     return valid_loss, valid_acc
 
 
-# Model B
-class Classifier(nn.Module):
+# Model A
+class CNN(nn.Module):
     def __init__(self):
-        super(Classifier, self).__init__()
+        super(CNN, self).__init__()
         # torch.nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding)
         # torch.nn.MaxPool2d(kernel_size, stride, padding)
         # input 維度 [3, 128, 128]
         # stride and padding: 影響第一維
         # pooling: 縮小每張圖的pixel
         self.cnn1 = nn.Sequential(
-            nn.Conv2d(3, 64, 3, 2, 1),  # [64, 128/2, 128/2]
+            nn.Conv2d(3, 64, 3, 2, 1),  # [64, 16, 16]
             nn.BatchNorm2d(64),
         )
         self.cnn2 = nn.Sequential(
-            nn.Conv2d(64, 256, 3, 2, 1), # [256, 64, 64] 
+            nn.Conv2d(64, 256, 3, 2, 1), # [256, 8, 8] 
             nn.BatchNorm2d(256),
         )
         self.cnn3 = nn.Sequential( 
-            nn.Conv2d(256, 256, 3, 1, 1), # [256, 32, 32]
-            nn.BatchNorm2d(256),
+            nn.Conv2d(256, 512, 3, 1, 1), # [512, 4, 4]
+            nn.BatchNorm2d(512),
         )
         # pooling
         self.cnn4 = nn.Sequential(
-            nn.Conv2d(256, 512, 3, 1, 1), # [512, 16, 16]  
+            nn.Conv2d(512, 512, 3, 1, 1), # [512, 2, 2]  
             nn.BatchNorm2d(512),
         )
-        # pooling
-        self.cnn5 = nn.Sequential(
-            nn.Conv2d(512, 512, 3, 1, 1), # [512, 8, 8] 
-            nn.BatchNorm2d(512),
-        )
-        # pooling
+
         self.fc = nn.Sequential(
-            nn.Linear(512, 512),
+            nn.Linear(512*2*2, 2048),
             nn.ReLU(),
-            nn.Linear(512, 50)
+            nn.Linear(2048, 50)
         )
         self.relu = nn.ReLU()
         self.maxPool = nn.MaxPool2d(2, 2, 0)
@@ -181,39 +179,51 @@ class Classifier(nn.Module):
     def forward(self, x):
         # print(x.shape)
         out = self.cnn1(x)                  # [64, 128/2, 128/2]
-        
-        # print(out.shape)
-        out = self.cnn2(out)                # [256, 64/2, 64/2] 
+        #print(out.shape)
 
-        # print(out.shape)
-        out = self.cnn3(out) + out          # [256, 32, 32] 
+        out = self.cnn2(out)                # [256, 64/2, 64/2] 
+        #print(out.shape)
+
+        out = self.cnn3(out)                # [256, 32, 32] 
         out = self.maxPool(self.relu(out))  # [256, 16, 16] 
-        # print(out.shape) 
+        #print(out.shape) 
+        
         out = self.cnn4(out)                # [512, 16, 16]
         out = self.maxPool(self.relu(out))  # [512, 8, 8]
-        # print(out.shape) 
-        out = self.cnn5(out) + out          # [512, 8, 8]
-        out = self.maxPool(self.relu(out))  # [512, 4, 4]
-        # print(out.shape)
+        #print(out.shape) 
         
         out = out.view(out.size()[0], -1)
         out = self.fc(out)
         return out
 
 
+# Model B
+class Resnet(nn.Module):
+    def __init__(self):
+        super(Resnet, self).__init__()
+        self.feather_extractor = resnet50(pretrained=True)
+        self.classifier = nn.Sequential(
+            nn.Linear(1000, 50)
+        )
+
+    def forward(self, x):
+        out = self.feather_extractor(x)
+        out = self.classifier(out)
+        return out
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="hw 1-1 train",
                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("src", help="Training data location")
-    parser.add_argument("checkpth", help="Checkopint location")
+    parser.add_argument("--checkpth", help="Checkopint location")
     parser.add_argument("--batch_size", help="batch size", default=32)
-    parser.add_argument("--model_option", help="Choose \"A\" or \"B\". (from scratch or resnet)", default="B")
+    parser.add_argument("--model_option", help="Choose \"A\" or \"B\". (CNN from scratch or Resnet)", default="A")
     parser.add_argument("--learning_rate", help="learning rate", default=5e-5)
     parser.add_argument("--weight_decay", help="weight decay", default=0)
     parser.add_argument("--scheduler_lr_decay_step", help="scheduler learning rate decay step ", default=3)
     parser.add_argument("--scheduler_lr_decay_ratio", help="scheduler learning rate decay ratio ", default=0.99)
-    parser.add_argument("--n_epochs", help="n_epochs", default=50)
+    parser.add_argument("--n_epochs", help="n_epochs", default=200)
     parser.add_argument("--n_split", help="k-fold split numbers", default=5)    
     parser.add_argument("--patience", help="Training patience", default=30)   
     parser.add_argument("--l2_reg_lambda", help="Lambda value for L@ regularizer", default=0.001)   
@@ -243,7 +253,6 @@ if __name__ == '__main__':
     train_tfm = transforms.Compose([
         transforms.Resize((32, 32)),
         transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.5, hue=0.1),
-        transforms.RandomRotation(degrees=(-15,+15)),
         transforms.RandomHorizontalFlip(p=0.5),
         transforms.ToTensor(),
     ])
@@ -265,7 +274,12 @@ if __name__ == '__main__':
         valid_loader = DataLoader(valid_set, batch_size=batch_size, shuffle=True)
 
         # model
-        model = Classifier().to(device)
+        if model_option == "A":
+            print("A: CNN")
+            model = CNN().to(device)
+        elif model_option == "B":
+            print("B: Resnet")
+            model = Resnet().to(device)
 
         # optimizer
         optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
@@ -293,16 +307,14 @@ if __name__ == '__main__':
 
             # update logs
             if valid_acc > best_acc:
-                with open(f"./hw1-1_{model_option}_log.txt","a"):
-                    print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f} -> best")
+                print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f} -> best")
             else:
-                with open(f"./hw1-1_{model_option}_log.txt","a"):
-                    print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f}")
+                print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f}")
 
             # save models
             if valid_acc > best_acc:
                 print(f"Best model found at epoch {epoch}, saving model")
-                torch.save(model.state_dict(), f"hw1-1-{model_option}.ckpt") 
+                torch.save(model.state_dict(), f"hw1-1-{model_option}_fold{i}.ckpt") 
                 best_acc = valid_acc
                 stale = 0
             else:
