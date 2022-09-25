@@ -36,6 +36,7 @@ class ImageDataset(Dataset):
     def __getitem__(self,idx):
         fname = self.files[idx] 
         im = Image.open(fname)
+        # 32x32
         im = self.transform(im)
         # im = self.data[idx]
         try:
@@ -47,7 +48,10 @@ class ImageDataset(Dataset):
         return im,label
 
 
-def train(model, criterion, optimizer, train_loader, device):
+def l2_regularizer(model):
+    return sum(p.pow(2).sum() for p in model.parameters())
+
+def train(model, criterion, optimizer, train_loader, device, lamb = 0.001):
     
     # Make sure the model is in train mode before training
     model.train()
@@ -63,12 +67,11 @@ def train(model, criterion, optimizer, train_loader, device):
 
         # Forward the data. (Make sure data and model are on the same device.)
         logits = model(imgs.to(device))
-        # print(logits.shape)
         # print(labels.shape)
         
         # Calculate the cross-entropy loss.
         # We don't need to apply softmax before computing cross-entropy as it is done automatically.
-        loss = criterion(logits, labels.to(device))
+        loss = criterion(logits, labels.to(device)) + lamb * l2_regularizer(model)
         # print("single loss:", loss)
         # myLoss = customCrossEntropy(logits, labels.to(device))
 
@@ -97,7 +100,7 @@ def train(model, criterion, optimizer, train_loader, device):
     return train_loss, train_acc
 
     
-def validate(model, criterion, valid_loader, device):
+def validate(model, criterion, valid_loader, device, lamb):
     
     # Make sure the model is in eval mode so that some modules like dropout are disabled and work normally.
     model.eval()
@@ -118,7 +121,7 @@ def validate(model, criterion, valid_loader, device):
             logits = model(imgs.to(device))
 
         # We can still compute the loss (but not the gradient).
-        loss = criterion(logits, labels.to(device))
+        loss = criterion(logits, labels.to(device)) + lamb * l2_regularizer(model)
         
         # Compute the accuracy for current batch.
         acc = (logits.argmax(dim=-1) == labels.to(device)).float().mean()
@@ -168,11 +171,9 @@ class Classifier(nn.Module):
         )
         # pooling
         self.fc = nn.Sequential(
-            nn.Linear(512*4*4, 1024),
+            nn.Linear(512, 512),
             nn.ReLU(),
-            nn.Linear(1024, 512),
-            nn.ReLU(),
-            nn.Linear(512, 11)
+            nn.Linear(512, 50)
         )
         self.relu = nn.ReLU()
         self.maxPool = nn.MaxPool2d(2, 2, 0)
@@ -200,6 +201,7 @@ class Classifier(nn.Module):
         return out
 
 
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="hw 1-1 train",
                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -214,7 +216,7 @@ if __name__ == '__main__':
     parser.add_argument("--n_epochs", help="n_epochs", default=50)
     parser.add_argument("--n_split", help="k-fold split numbers", default=5)    
     parser.add_argument("--patience", help="Training patience", default=30)   
-
+    parser.add_argument("--l2_reg_lambda", help="Lambda value for L@ regularizer", default=0.001)   
     args = parser.parse_args()
     print(vars(args))
 
@@ -226,22 +228,28 @@ if __name__ == '__main__':
     weight_decay = args.weight_decay
     lr_decay_step = args.scheduler_lr_decay_step
     lr_decay_ratio = args.scheduler_lr_decay_ratio
+    
     n_epochs = args.n_epochs
     n_split = args.n_split
     patience = args.patience
+    l2_lamb = args.l2_reg_lambda
 
     # fix random seed
     fix_random_seed()
 
     # GPU
-    device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     
-    # Load dataset
-    tfm = transforms.Compose([
-        transforms.Resize((128, 128)),
+    train_tfm = transforms.Compose([
+        transforms.Resize((32, 32)),
+        transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.5, hue=0.1),
+        transforms.RandomRotation(degrees=(-15,+15)),
+        transforms.RandomHorizontalFlip(p=0.5),
         transforms.ToTensor(),
     ])
-    dataset = ImageDataset(src_path, tfm)
+
+    # Load dataset
+    dataset = ImageDataset(src_path, tfm=train_tfm)
     kfold = KFold(n_splits=n_split, shuffle=True)
     # print(len(image_dataset))
     # train_loader = DataLoader(image_dataset, batch_size=args.batch_size, shuffle=True)
@@ -275,12 +283,12 @@ if __name__ == '__main__':
             print('Epoch-{0} lr: {1}'.format(epoch, optimizer.param_groups[0]['lr']))
             
             # ---------- Training ----------
-            train_loss, train_acc = train(model, criterion, optimizer, train_loader, device)
+            train_loss, train_acc = train(model, criterion, optimizer, train_loader, device, lamb=l2_lamb)
             print(f"[ Train | {epoch + 1:03d}/{n_epochs:03d} ] loss = {train_loss:.5f}, acc = {train_acc:.5f}")
             scheduler.step()
                 
             # ---------- Validation ----------
-            valid_loss, valid_acc = validate(model, criterion, valid_loader, device)
+            valid_loss, valid_acc = validate(model, criterion, valid_loader, device, lamb=l2_lamb)
             print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f}")
 
             # update logs
@@ -294,7 +302,7 @@ if __name__ == '__main__':
             # save models
             if valid_acc > best_acc:
                 print(f"Best model found at epoch {epoch}, saving model")
-                torch.save(model.state_dict(), f"{model_path}_fondation.ckpt") 
+                torch.save(model.state_dict(), f"hw1-1-{model_option}.ckpt") 
                 best_acc = valid_acc
                 stale = 0
             else:
