@@ -4,7 +4,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
-from torchvision.models import resnet50
+from torchvision.models import resnet18, ResNet18_Weights, resnet50, ResNet50_Weights
 
 from torch.utils.data import ConcatDataset, DataLoader, Subset, Dataset
 import random
@@ -54,8 +54,8 @@ class ImageDataset(Dataset):
 def l2_regularizer(model):
     return sum(p.pow(2).sum() for p in model.parameters())
 
+
 def train(model, criterion, optimizer, train_loader, device, lamb = 0.001):
-    
     # Make sure the model is in train mode before training
     model.train()
     
@@ -104,7 +104,6 @@ def train(model, criterion, optimizer, train_loader, device, lamb = 0.001):
 
     
 def validate(model, criterion, valid_loader, device, lamb):
-    
     # Make sure the model is in eval mode so that some modules like dropout are disabled and work normally.
     model.eval()
     
@@ -201,9 +200,14 @@ class CNN(nn.Module):
 class Resnet(nn.Module):
     def __init__(self):
         super(Resnet, self).__init__()
-        self.feather_extractor = resnet50(pretrained=True)
+        self.feather_extractor = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
+        #self.feather_extractor = resnet50(weights=ResNet50_Weights.IMAGENET1K_V2)
         self.classifier = nn.Sequential(
-            nn.Linear(1000, 50)
+            nn.Linear(1000, 1000),
+            nn.ReLU(),
+            nn.Linear(1000, 1000),
+            nn.ReLU(),
+            nn.Linear(1000, 50),
         )
 
     def forward(self, x):
@@ -225,7 +229,7 @@ if __name__ == '__main__':
     parser.add_argument("--scheduler_lr_decay_ratio", help="scheduler learning rate decay ratio ", default=0.99)
     parser.add_argument("--n_epochs", help="n_epochs", default=200)
     parser.add_argument("--n_split", help="k-fold split numbers", default=5)    
-    parser.add_argument("--patience", help="Training patience", default=30)   
+    parser.add_argument("--patience", help="Training patience", default=50)   
     parser.add_argument("--l2_reg_lambda", help="Lambda value for L@ regularizer", default=0.001)   
     args = parser.parse_args()
     print(vars(args))
