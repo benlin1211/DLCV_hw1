@@ -8,7 +8,8 @@ from torch.utils.data import ConcatDataset, DataLoader, Subset, Dataset
 import random
 from tqdm import tqdm
 from sklearn.model_selection import KFold
-
+import pandas
+from PIL import Image
 
 def fix_random_seed():
     myseed = 6666  # set a random seed for reproducibility
@@ -21,13 +22,13 @@ def fix_random_seed():
         
 
 class ImageDataset(Dataset):
-    def __init__(self, path, files = None):
+    def __init__(self, path, tfm, files = None):
         super(ImageDataset).__init__()
         self.path = path
         self.files = sorted([os.path.join(path,x) for x in os.listdir(path) if x.endswith(".png")])
         if files != None:
             self.files = files
-        #  self.transform = tfm
+        self.transform = tfm
 
     def __len__(self):
         return len(self.files)
@@ -35,7 +36,7 @@ class ImageDataset(Dataset):
     def __getitem__(self,idx):
         fname = self.files[idx] 
         im = Image.open(fname)
-        # im = self.transform(im)
+        im = self.transform(im)
         # im = self.data[idx]
         try:
             label = int(fname.split("/")[-1].split("_")[0])
@@ -233,10 +234,14 @@ if __name__ == '__main__':
     fix_random_seed()
 
     # GPU
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
     
     # Load dataset
-    dataset = ImageDataset(src_path)
+    tfm = transforms.Compose([
+        transforms.Resize((128, 128)),
+        transforms.ToTensor(),
+    ])
+    dataset = ImageDataset(src_path, tfm)
     kfold = KFold(n_splits=n_split, shuffle=True)
     # print(len(image_dataset))
     # train_loader = DataLoader(image_dataset, batch_size=args.batch_size, shuffle=True)
