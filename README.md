@@ -26,6 +26,9 @@ Note that using packages with different versions will very likely lead to compat
 ### List all environments
     conda info --envs
 
+### Close an environment
+    conda deactivate
+
 ### Remove an environment
     conda env remove -n DLCV-hw1
 
