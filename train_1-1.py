@@ -6,7 +6,7 @@ import torch.nn as nn
 import torchvision.transforms as transforms
 from torch.utils.data import ConcatDataset, DataLoader, Subset, Dataset
 import random
-import tqdm
+from tqdm import tqdm
 from sklearn.model_selection import KFold
 
 
@@ -27,14 +27,16 @@ class ImageDataset(Dataset):
         self.files = sorted([os.path.join(path,x) for x in os.listdir(path) if x.endswith(".png")])
         if files != None:
             self.files = files
+        #  self.transform = tfm
 
     def __len__(self):
         return len(self.files)
   
     def __getitem__(self,idx):
         fname = self.files[idx] 
-        im = self.transform(im)
-        #im = self.data[idx]
+        im = Image.open(fname)
+        # im = self.transform(im)
+        # im = self.data[idx]
         try:
             label = int(fname.split("/")[-1].split("_")[0])
             # print(label)
@@ -94,7 +96,7 @@ def train(model, criterion, optimizer, train_loader, device):
     return train_loss, train_acc
 
     
-def validate(model, criterion, valid_loader):
+def validate(model, criterion, valid_loader, device):
     
     # Make sure the model is in eval mode so that some modules like dropout are disabled and work normally.
     model.eval()
@@ -265,15 +267,15 @@ if __name__ == '__main__':
         for epoch in range(n_epochs):
             
             print("Fold:",i)
-            print('Epoch-{0} lr: {1}'.format(epoch_record, optimizer.param_groups[0]['lr']))
+            print('Epoch-{0} lr: {1}'.format(epoch, optimizer.param_groups[0]['lr']))
             
             # ---------- Training ----------
-            train_loss, train_acc = train(model, criterion, optimizer, train_loader)
+            train_loss, train_acc = train(model, criterion, optimizer, train_loader, device)
             print(f"[ Train | {epoch + 1:03d}/{n_epochs:03d} ] loss = {train_loss:.5f}, acc = {train_acc:.5f}")
             scheduler.step()
                 
             # ---------- Validation ----------
-            valid_loss, valid_acc = validate(model, criterion, valid_loader)
+            valid_loss, valid_acc = validate(model, criterion, valid_loader, device)
             print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f}")
 
             # update logs
@@ -298,4 +300,4 @@ if __name__ == '__main__':
                     break
 
             # update epoch record
-            epoch_record = epoch_record + 1  
+            epoch = epoch + 1  
