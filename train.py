@@ -7,7 +7,7 @@ import torchvision.transforms as transforms
 from torch.utils.data import ConcatDataset, DataLoader, Subset, Dataset
 import random
 import tqdm
-#from sklearn.model_selection import KFold
+from sklearn.model_selection import KFold
 
 
 class ImageDataset(Dataset):
@@ -82,6 +82,44 @@ def train(model, criterion, optimizer, train_loader, device):
     train_acc = sum(train_accs) / len(train_accs)
 
     return train_loss, train_acc
+
+    
+def validate(model, criterion, valid_loader):
+    
+    # Make sure the model is in eval mode so that some modules like dropout are disabled and work normally.
+    model.eval()
+    
+    valid_loss = []
+    valid_accs = []
+
+    # Iterate the validation set by batches.
+    for batch in tqdm(valid_loader):
+
+        # A batch consists of image data and corresponding labels.
+        imgs, labels = batch
+        #imgs = imgs.half()
+
+        # We don't need gradient in validation.
+        # Using torch.no_grad() accelerates the forward process.
+        with torch.no_grad():
+            logits = model(imgs.to(device))
+
+        # We can still compute the loss (but not the gradient).
+        loss = criterion(logits, labels.to(device))
+        
+        # Compute the accuracy for current batch.
+        acc = (logits.argmax(dim=-1) == labels.to(device)).float().mean()
+
+        # Record the loss and accuracy.
+        valid_loss.append(loss.item())
+        valid_accs.append(acc)
+        #break
+
+    # The average loss and accuracy for entire validation set is the average of the recorded values.
+    valid_loss = sum(valid_loss) / len(valid_loss)
+    valid_acc = sum(valid_accs) / len(valid_accs)
+
+    return valid_loss, valid_acc
 
 
 def fix_random_seed():
@@ -170,10 +208,14 @@ if __name__ == '__main__':
     parser.add_argument("--scheduler_lr_decay_step", help="scheduler learning rate decay step ", default=3)
     parser.add_argument("--scheduler_lr_decay_ratio", help="scheduler learning rate decay ratio ", default=0.99)
     parser.add_argument("--n_epochs", help="n_epochs", default=50)
-        
-    
+    parser.add_argument("--n_split", help="k-fold split numbers", default=5)    
+    parser.add_argument("--patience", help="Training patience", default=30)   
+
     args = parser.parse_args()
     print(vars(args))
+
+    src_path = args.src
+    model_path = args.checkpth
     batch_size = args.batch_size
     model_option = args.model_option
     lr = args.learning_rate
@@ -181,6 +223,8 @@ if __name__ == '__main__':
     lr_decay_step = args.scheduler_lr_decay_step
     lr_decay_ratio = args.scheduler_lr_decay_ratio
     n_epochs = args.n_epochs
+    n_split = args.n_split
+    patience = args.patience
 
     # fix random seed
     fix_random_seed()
@@ -189,60 +233,59 @@ if __name__ == '__main__':
     device = "cuda" if torch.cuda.is_available() else "cpu"
     
     # Load dataset
-    image_dataset = ImageDataset(args.src)
+    dataset = ImageDataset(src_path)
+    kfold = KFold(n_splits=n_split, shuffle=True)
     # print(len(image_dataset))
-    train_loader = DataLoader(image_dataset, batch_size=args.batch_size, shuffle=True)
-
-
-    # model
-    model = Classifier().to(device)
+    # train_loader = DataLoader(image_dataset, batch_size=args.batch_size, shuffle=True)
 
     # loss
     criterion = nn.CrossEntropyLoss()
+   
+    for i, (train_ids, val_ids) in enumerate(kfold.split(dataset)):
 
-    # optimizer
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+        train_set = Subset(dataset, train_ids)
+        valid_set = Subset(dataset, val_ids)
+        train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
+        valid_loader = DataLoader(valid_set, batch_size=batch_size, shuffle=True)
 
-    # scheduler
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=lr_decay_step, gamma=lr_decay_ratio)    
+        # model
+        model = Classifier().to(device)
 
+        # optimizer
+        optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
 
-    stale = 0 # count for patiency
-    best_acc = 0
-    # Training loop
-    for epoch in range(n_epochs):
+        # scheduler
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=lr_decay_step, gamma=lr_decay_ratio)    
+
+        stale = 0 # count for patiency
+        best_acc = 0
+        # Training loop
+
+        for epoch in range(n_epochs):
             
-        print('Epoch-{0} lr: {1}'.format(epoch_record, optimizer.param_groups[0]['lr']))
-        # ---------- Training ----------
-        train_loss, train_acc = train(model, criterion, optimizer, train_loader)
-        print(f"[ Train | {epoch + 1:03d}/{n_epochs:03d} ] loss = {train_loss:.5f}, acc = {train_acc:.5f}")
-        scheduler.step()
+            print("Fold:",i)
+            print('Epoch-{0} lr: {1}'.format(epoch_record, optimizer.param_groups[0]['lr']))
             
-        # ---------- Validation ----------
-        #valid_loss, valid_acc = validate(model, criterion, optimizer, train_loader)
-        #print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f}")
+            # ---------- Training ----------
+            train_loss, train_acc = train(model, criterion, optimizer, train_loader)
+            print(f"[ Train | {epoch + 1:03d}/{n_epochs:03d} ] loss = {train_loss:.5f}, acc = {train_acc:.5f}")
+            scheduler.step()
+                
+            # ---------- Validation ----------
+            valid_loss, valid_acc = validate(model, criterion, optimizer, valid_loader)
+            print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f}")
 
-        # update logs
-        if valid_acc > best_acc:
-            with open(f"./{model_option}_log.txt","a"):
-                print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f} -> best")
-        else:
-            with open(f"./hw1-1_{model_option}_log.txt","a"):
-                print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f}")
+            # update logs
+            if valid_acc > best_acc:
+                with open(f"./{model_option}_log.txt","a"):
+                    print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f} -> best")
+            else:
+                with open(f"./hw1-1_{model_option}_log.txt","a"):
+                    print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f}")
 
 
-        # save models
-        if valid_acc > best_acc:
-            print(f"Best model found at epoch {epoch}, saving model")
-            torch.save(model.state_dict(), f"{_exp_name}_fondation.ckpt") 
-            best_acc = valid_acc
-            stale = 0
-        else:
-            stale += 1
-            print(f"No improvment {stale}")
-            if stale > patience:
-                print(f"No improvment {patience} consecutive epochs, early stopping")
-                break
-            
-        # update epoch record
-        epoch_record = epoch_record + 1  
+            # save models
+
+
+            # update epoch record
+            epoch_record = epoch_record + 1  
