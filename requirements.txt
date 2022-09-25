@@ -8,5 +8,5 @@ torchvision==0.13.1
 gdown
 sklearn
 pandas
-PIL
+pillow
 
