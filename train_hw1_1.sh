@@ -6,4 +6,8 @@
 #  echo "parameter $i --> ${!i}"
 #done
 
-python3 train_1-1.py ${1} --model_option="B"
+# best(09/26 14:14): 
+#python3 train_1-1.py ${1} --model_option="B" --l2_reg_lambda=0.005
+
+# for resnet50
+python3 train_1-1.py ${1} --model_option="B" --l2_reg_lambda=1e-5

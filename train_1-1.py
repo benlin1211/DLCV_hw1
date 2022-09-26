@@ -197,18 +197,28 @@ class CNN(nn.Module):
 
 
 # Model B
-class Resnet(nn.Module):
-    def __init__(self):
+class Resnet(nn.Module): 
+    def __init__(self, num_freeze_layer=7):
         super(Resnet, self).__init__()
-        self.feather_extractor = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
-        #self.feather_extractor = resnet50(weights=ResNet50_Weights.IMAGENET1K_V2)
+        #self.feather_extractor = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
+        self.feather_extractor = resnet50(weights=ResNet50_Weights.IMAGENET1K_V2)
+        
+        # Freeze top layers 
+        for i,child in enumerate(self.feather_extractor.children()):
+            if i < num_freeze_layer:
+                for param in child.parameters():
+                    param.requires_grad = False
+                #print(i, "(freezed):", child)
+            else:
+                pass
+                #print(i, ":", child)
+
         self.classifier = nn.Sequential(
-            nn.Linear(1000, 1000),
-            nn.ReLU(),
-            nn.Linear(1000, 1000),
-            nn.ReLU(),
             nn.Linear(1000, 50),
+            #nn.ReLU(),ßßß
+            #nn.Linear(1000, 50),
         )
+        
 
     def forward(self, x):
         out = self.feather_extractor(x)
@@ -221,16 +231,16 @@ if __name__ == '__main__':
                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("src", help="Training data location")
     parser.add_argument("--checkpth", help="Checkopint location")
-    parser.add_argument("--batch_size", help="batch size", default=32)
+    parser.add_argument("--batch_size", help="batch size", type=int, default=32)
     parser.add_argument("--model_option", help="Choose \"A\" or \"B\". (CNN from scratch or Resnet)", default="A")
-    parser.add_argument("--learning_rate", help="learning rate", default=5e-5)
-    parser.add_argument("--weight_decay", help="weight decay", default=0)
-    parser.add_argument("--scheduler_lr_decay_step", help="scheduler learning rate decay step ", default=3)
-    parser.add_argument("--scheduler_lr_decay_ratio", help="scheduler learning rate decay ratio ", default=0.99)
-    parser.add_argument("--n_epochs", help="n_epochs", default=200)
-    parser.add_argument("--n_split", help="k-fold split numbers", default=5)    
-    parser.add_argument("--patience", help="Training patience", default=50)   
-    parser.add_argument("--l2_reg_lambda", help="Lambda value for L@ regularizer", default=0.001)   
+    parser.add_argument("--learning_rate", help="learning rate", type=float, default=5e-5)
+    parser.add_argument("--weight_decay", help="weight decay", type=float, default=0.0)
+    parser.add_argument("--scheduler_lr_decay_step", help="scheduler learning rate decay step ", type=int, default=1)
+    parser.add_argument("--scheduler_lr_decay_ratio", help="scheduler learning rate decay ratio ", type=float, default=0.99)
+    parser.add_argument("--n_epochs", help="n_epochs", type=int, default=50)
+    parser.add_argument("--n_split", help="k-fold split numbers", type=int, default=5)    
+    parser.add_argument("--patience", help="Training patience", type=int, default=10)   
+    parser.add_argument("--l2_reg_lambda", help="Lambda value for L2 regularizer", type=float, default=0.001)   
     args = parser.parse_args()
     print(vars(args))
 
@@ -255,8 +265,9 @@ if __name__ == '__main__':
     device = "cuda" if torch.cuda.is_available() else "cpu"
     
     train_tfm = transforms.Compose([
-        transforms.Resize((32, 32)),
-        transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.5, hue=0.1),
+        transforms.Resize((224, 224)), # Upsampling
+        # best: no ColorJitter
+        #transforms.ColorJitter(brightness=0.5, contrast=0.5, saturation=0.5, hue=0.1),
         transforms.RandomHorizontalFlip(p=0.5),
         transforms.ToTensor(),
     ])
@@ -284,6 +295,7 @@ if __name__ == '__main__':
         elif model_option == "B":
             print("B: Resnet")
             model = Resnet().to(device)
+        print(model)
 
         # optimizer
         optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
