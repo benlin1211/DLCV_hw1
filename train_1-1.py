@@ -198,12 +198,12 @@ class CNN(nn.Module):
 
 # Model B
 class Resnet(nn.Module): 
-    def __init__(self, num_freeze_layer=7):
+    def __init__(self, num_freeze_layer=0):
         super(Resnet, self).__init__()
         #self.feather_extractor = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
         self.feather_extractor = resnet50(weights=ResNet50_Weights.IMAGENET1K_V2)
         
-        # Freeze top layers 
+        # Freeze top layers (if needed)
         for i,child in enumerate(self.feather_extractor.children()):
             if i < num_freeze_layer:
                 for param in child.parameters():
