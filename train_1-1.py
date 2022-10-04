@@ -348,9 +348,12 @@ if __name__ == '__main__':
                     print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f}")
 
                 # save models
+                
                 if valid_acc > best_acc:
                     print(f"Best model found at epoch {epoch}, saving model")
-                    torch.save(model.state_dict(), f"hw1-1-{model_option}_fold{i}.ckpt") 
+                    if not os.path.exists("ckpt"):
+                        os.makedirs("ckpt")
+                    torch.save(model.state_dict(), f"./ckpt/hw1-1-{model_option}_fold{i}.ckpt") 
                     best_acc = valid_acc
                     stale = 0
                 else:
@@ -390,7 +393,7 @@ if __name__ == '__main__':
                 print("B: Resnet")
                 model = Resnet().to(device)
 
-            model.load_state_dict(torch.load(f"hw1-1-{model_option}_fold{i}.ckpt"))
+            model.load_state_dict(torch.load(f"./ckpt/hw1-1-{model_option}_fold{i}.ckpt"))
             model.eval()
             
             with torch.no_grad():
