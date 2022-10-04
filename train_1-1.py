@@ -4,14 +4,16 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
-from torchvision.models import resnet18, ResNet18_Weights, resnet50, ResNet50_Weights
+from torchvision.models import resnet50, ResNet50_Weights
 
 from torch.utils.data import ConcatDataset, DataLoader, Subset, Dataset
 import random
 from tqdm import tqdm
 from sklearn.model_selection import KFold
-import pandas
+import pandas as pd
 from PIL import Image
+
+from collections import Counter
 
 
 def fix_random_seed():
@@ -25,13 +27,16 @@ def fix_random_seed():
         
 
 class ImageDataset(Dataset):
-    def __init__(self, path, tfm, files = None):
+    def __init__(self, path, tfm, mode, files = None):
         super(ImageDataset).__init__()
         self.path = path
-        self.files = sorted([os.path.join(path,x) for x in os.listdir(path) if x.endswith(".png")])
+        self.files = sorted([os.path.join(path,x) for x in os.listdir(path) if x.endswith(".png")], key=lambda x: (int(x.split('/')[-1].split('_')[0]), int(x.split('/')[-1].split('_')[1].split('.')[0]))) # TODO: sort with correct order!
+        # Ref: https://stackoverflow.com/questions/54399946/python-glob-sorting-files-of-format-int-int-the-same-as-windows-name-sort
+
         if files != None:
             self.files = files
         self.transform = tfm
+        self.mode = mode
 
     def __len__(self):
         return len(self.files)
@@ -42,11 +47,11 @@ class ImageDataset(Dataset):
         # 32x32
         im = self.transform(im)
         # im = self.data[idx]
-        try:
+        if self.mode == "train":
             label = int(fname.split("/")[-1].split("_")[0])
             # print(label)
-        except:
-            label = -1 # test has no label
+        elif self.mode == "test":
+            label = fname # return filename instead
             # print(" test has no label")
         return im,label
 
@@ -150,50 +155,59 @@ class CNN(nn.Module):
         # stride and padding: 影響第一維
         # pooling: 縮小每張圖的pixel
         self.cnn1 = nn.Sequential(
-            nn.Conv2d(3, 64, 3, 2, 1),  # [64, 16, 16]
+            nn.Conv2d(3, 64, 3, 1, 1),  # [64, 128, 128]
             nn.BatchNorm2d(64),
+            nn.ReLU(),                  # [64, 128, 128
+            nn.MaxPool2d(2, 2, 0),      # [64, 64, 64]
         )
         self.cnn2 = nn.Sequential(
-            nn.Conv2d(64, 256, 3, 2, 1), # [256, 8, 8] 
-            nn.BatchNorm2d(256),
+            nn.Conv2d(64, 128, 3, 1, 1), # [128, 64, 64] 
+
+            nn.BatchNorm2d(128),
+            nn.ReLU(),                  # [128, 64, 64]
+            nn.MaxPool2d(2, 2, 0),      # [128, 32, 32] 
         )
         self.cnn3 = nn.Sequential( 
-            nn.Conv2d(256, 512, 3, 1, 1), # [512, 4, 4]
-            nn.BatchNorm2d(512),
+            nn.Conv2d(128, 256, 3, 1, 1), # [256, 32, 32]
+            nn.BatchNorm2d(256),
+            nn.ReLU(),                  # [256, 32, 32] 
+            nn.MaxPool2d(2, 2, 0),      # [256, 16, 16]
         )
-        # pooling
         self.cnn4 = nn.Sequential(
-            nn.Conv2d(512, 512, 3, 1, 1), # [512, 2, 2]  
+            nn.Conv2d(256, 512, 3, 1, 1), # [512, 16, 16]  
             nn.BatchNorm2d(512),
-        )
-
-        self.fc = nn.Sequential(
-            nn.Linear(512*2*2, 2048),
             nn.ReLU(),
-            nn.Linear(2048, 50)
+            nn.MaxPool2d(2, 2, 0),       # [512, 8, 8]
+        )
+        self.cnn5 = nn.Sequential(
+            nn.Conv2d(512, 512, 3, 1, 1), # [512, 8, 8] 
+            nn.BatchNorm2d(512),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2, 0),       # [512, 4, 4] 
+        )
+        self.fc = nn.Sequential(
+            nn.Linear(512*7*7, 1024),
+            nn.ReLU(),
+            nn.Linear(1024, 512),
+            nn.ReLU(),
+            nn.Linear(512, 50)
         )
         self.relu = nn.ReLU()
-        self.maxPool = nn.MaxPool2d(2, 2, 0)
         
     def forward(self, x):
         # print(x.shape)
-        out = self.cnn1(x)                  # [64, 128/2, 128/2]
-        #print(out.shape)
-
-        out = self.cnn2(out)                # [256, 64/2, 64/2] 
-        #print(out.shape)
-
-        out = self.cnn3(out)                # [256, 32, 32] 
-        out = self.maxPool(self.relu(out))  # [256, 16, 16] 
-        #print(out.shape) 
-        
-        out = self.cnn4(out)                # [512, 16, 16]
-        out = self.maxPool(self.relu(out))  # [512, 8, 8]
-        #print(out.shape) 
-        
+        out = self.cnn1(x)
+        # print(out.shape)
+        out = self.cnn2(out)
+        # print(out.shape)
+        out = self.cnn3(out)
+        # print(out.shape) 
+        out = self.cnn4(out)
+        # print(out.shape) 
+        out = self.cnn5(out)
+        # print(out.shape) 
         out = out.view(out.size()[0], -1)
-        out = self.fc(out)
-        return out
+        return self.fc(out)
 
 
 # Model B
@@ -230,7 +244,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="hw 1-1 train",
                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("src", help="Training data location")
-    parser.add_argument("--checkpth", help="Checkopint location")
+    parser.add_argument("dest", help="CSV prediction output location (for test mode)")
+    parser.add_argument("--mode", help="train or test", default="train")   
+    parser.add_argument("--checkpth", help="Checkpoint location")
     parser.add_argument("--batch_size", help="batch size", type=int, default=32)
     parser.add_argument("--model_option", help="Choose \"A\" or \"B\". (CNN from scratch or Resnet)", default="A")
     parser.add_argument("--learning_rate", help="learning rate", type=float, default=5e-5)
@@ -245,6 +261,8 @@ if __name__ == '__main__':
     print(vars(args))
 
     src_path = args.src
+    des_path = args.dest
+    mode = args.mode
     model_path = args.checkpth
     batch_size = args.batch_size
     model_option = args.model_option
@@ -262,7 +280,7 @@ if __name__ == '__main__':
     fix_random_seed()
 
     # GPU
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = "cuda:1" if torch.cuda.is_available() else "cpu"
     
     train_tfm = transforms.Compose([
         transforms.Resize((224, 224)), # Upsampling
@@ -271,74 +289,148 @@ if __name__ == '__main__':
         transforms.RandomHorizontalFlip(p=0.5),
         transforms.ToTensor(),
     ])
-
-    # Load dataset
-    dataset = ImageDataset(src_path, tfm=train_tfm)
-    kfold = KFold(n_splits=n_split, shuffle=True)
-    # print(len(image_dataset))
-    # train_loader = DataLoader(image_dataset, batch_size=args.batch_size, shuffle=True)
-
-    # loss
-    criterion = nn.CrossEntropyLoss()
    
-    for i, (train_ids, val_ids) in enumerate(kfold.split(dataset)):
+    # train
+    if mode == "train":
 
-        train_set = Subset(dataset, train_ids)
-        valid_set = Subset(dataset, val_ids)
-        train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
-        valid_loader = DataLoader(valid_set, batch_size=batch_size, shuffle=True)
+        # Load dataset
+        dataset = ImageDataset(src_path, tfm=train_tfm, mode=mode)
+        kfold = KFold(n_splits=n_split, shuffle=True)
+        # print(len(image_dataset))
+        # train_loader = DataLoader(image_dataset, batch_size=args.batch_size, shuffle=True)
 
-        # model
-        if model_option == "A":
-            print("A: CNN")
-            model = CNN().to(device)
-        elif model_option == "B":
-            print("B: Resnet")
-            model = Resnet().to(device)
-        print(model)
+        # loss
+        criterion = nn.CrossEntropyLoss()
+        
+        for i, (train_ids, val_ids) in enumerate(kfold.split(dataset)):
 
-        # optimizer
-        optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+            train_set = Subset(dataset, train_ids)
+            valid_set = Subset(dataset, val_ids)
+            train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
+            valid_loader = DataLoader(valid_set, batch_size=batch_size, shuffle=True)
+            # model
+            if model_option == "A":
+                print("A: CNN")
+                model = CNN().to(device)
+            elif model_option == "B":
+                print("B: Resnet")
+                model = Resnet().to(device)
+            print(model)
 
-        # scheduler
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=lr_decay_step, gamma=lr_decay_ratio)    
+            # optimizer
+            optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
 
-        stale = 0 # count for patiency
-        best_acc = 0
-        # Training loop
+            # scheduler
+            scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=lr_decay_step, gamma=lr_decay_ratio)    
 
-        for epoch in range(n_epochs):
-            
-            print("Fold:",i)
-            print('Epoch-{0} lr: {1}'.format(epoch, optimizer.param_groups[0]['lr']))
-            
-            # ---------- Training ----------
-            train_loss, train_acc = train(model, criterion, optimizer, train_loader, device, lamb=l2_lamb)
-            print(f"[ Train | {epoch + 1:03d}/{n_epochs:03d} ] loss = {train_loss:.5f}, acc = {train_acc:.5f}")
-            scheduler.step()
+            stale = 0 # count for patiency
+            best_acc = 0
+            # Training loop
+
+            for epoch in range(n_epochs):
                 
-            # ---------- Validation ----------
-            valid_loss, valid_acc = validate(model, criterion, valid_loader, device, lamb=l2_lamb)
-            print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f}")
-
-            # update logs
-            if valid_acc > best_acc:
-                print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f} -> best")
-            else:
+                print("Fold:",i)
+                print('Epoch-{0} lr: {1}'.format(epoch, optimizer.param_groups[0]['lr']))
+                
+                # ---------- Training ----------
+                train_loss, train_acc = train(model, criterion, optimizer, train_loader, device, lamb=l2_lamb)
+                print(f"[ Train | {epoch + 1:03d}/{n_epochs:03d} ] loss = {train_loss:.5f}, acc = {train_acc:.5f}")
+                scheduler.step()
+                    
+                # ---------- Validation ----------
+                valid_loss, valid_acc = validate(model, criterion, valid_loader, device, lamb=l2_lamb)
                 print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f}")
 
-            # save models
-            if valid_acc > best_acc:
-                print(f"Best model found at epoch {epoch}, saving model")
-                torch.save(model.state_dict(), f"hw1-1-{model_option}_fold{i}.ckpt") 
-                best_acc = valid_acc
-                stale = 0
-            else:
-                stale += 1
-                print(f"No improvment {stale}")
-                if stale > patience:
-                    print(f"No improvment {patience} consecutive epochs, early stopping")
-                    break
+                # update logs
+                if valid_acc > best_acc:
+                    print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f} -> best")
+                else:
+                    print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f}")
 
-            # update epoch record
-            epoch = epoch + 1  
+                # save models
+                if valid_acc > best_acc:
+                    print(f"Best model found at epoch {epoch}, saving model")
+                    torch.save(model.state_dict(), f"hw1-1-{model_option}_fold{i}.ckpt") 
+                    best_acc = valid_acc
+                    stale = 0
+                else:
+                    stale += 1
+                    print(f"No improvment {stale}")
+                    if stale > patience:
+                        print(f"No improvment {patience} consecutive epochs, early stopping")
+                        break
+
+                # update epoch record
+                epoch = epoch + 1  
+
+
+
+    # test
+    print("Mode:",mode)
+    if mode == "test":
+
+        # Load dataset
+        dataset = ImageDataset(src_path, tfm=train_tfm, mode=mode)
+        num_tests = len(dataset)
+        print(num_tests)
+
+        test_dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+        predictions = [ [] for _ in range(n_split) ]
+
+        # get filenames
+        filename_list = []
+        for _, filename in tqdm(test_dataloader):
+            filename_list += filename
+
+        for i in range(n_split):
+            if model_option == "A":
+                print("A: CNN")
+                model = CNN().to(device)
+            elif model_option == "B":
+                print("B: Resnet")
+                model = Resnet().to(device)
+
+            model.load_state_dict(torch.load(f"hw1-1-{model_option}_fold{i}.ckpt"))
+            model.eval()
+            
+            with torch.no_grad():
+                j=0
+                for data, _ in tqdm(test_dataloader):
+                    test_pred = model(data.to(device))
+                    test_label = np.argmax(test_pred.cpu().data.numpy(), axis=1)
+                    predictions[i] += test_label.squeeze().tolist()
+                    # j=j+1
+                    # if j>2:
+                    #     break
+
+        # ensembling    
+        prediction_final = []
+        for i in range(n_split):
+            print(len( predictions[i]))
+        for j in range(num_tests):
+            vote_box = []
+            for i in range(n_split):
+                print(predictions[i][j])
+                vote_box.append(predictions[i][j])
+            counts = Counter(vote_box)
+            # get the frequency of the most.
+            max_count = counts.most_common(1)[0][1] 
+            # get the result that equals to that frequency.
+            out = [value for value, count in counts.most_common() if count == max_count]
+            # draw:
+            if len(out)>1: 
+                # flip to decide...
+                out = [random.choice(out)]
+            # turn list into single value
+            print(f"==={j}=== out:",out)
+            out = out[0]
+            prediction_final.append(out)
+        print(prediction_final)
+
+        # write_result
+        df = pd.DataFrame() # apply pd.DataFrame format 
+        df["filename"] = filename_list
+        df["label"] = prediction_final
+        df.to_csv(f"val_{model_option}.csv",index = False)
+
+
