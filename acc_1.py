@@ -30,15 +30,12 @@ if __name__ == '__main__':
 
     pred = read_csv(pred_path)
     gth = read_csv(gth_path)
-    print(len(pred))
-    print(len(gth))
     hit = 0
     total_cnt = 0
     for i in range(len(gth)):
         if pred[i] == gth[i]:
             hit=hit+1
         total_cnt=total_cnt+1
-    print(total_cnt)
     print("Acc:", hit / total_cnt)
 
 
