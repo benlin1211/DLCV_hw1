@@ -37,10 +37,16 @@ https://machinelearningmastery.com/command-line-arguments-for-your-python-script
 
 ### Run Training Code
 
-    bash ./train_hw1_1.sh ./hw1_data/hw1_data/p1_data/train_50 .
-### Run eval code
+    bash ./train_hw1-1.sh ./hw1_data/hw1_data/p1_data/train_50 .
+    
+### Run Inference Code
 
-    bash ./eval_1.sh "./val.csv" "./hw1_data/hw1_data/p1_data/val_gt.csv"
+    bash ./train_hw1-1.sh ./hw1_data/hw1_data/p1_data/val_50 result
+    
+### Acccuracy
+
+    bash ./eval_1-1.sh "./val_A.csv" "./hw1_data/hw1_data/p1_data/val_gt.csv"
+    bash ./eval_1-1.sh "./val_B.csv" "./hw1_data/hw1_data/p1_data/val_gt.csv"
 
 # Q&A
 If you have any problems related to HW1, you may
