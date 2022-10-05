@@ -296,8 +296,7 @@ if __name__ == '__main__':
         # Load dataset
         dataset = ImageDataset(src_path, tfm=train_tfm, mode=mode)
         kfold = KFold(n_splits=n_split, shuffle=True)
-        # print(len(image_dataset))
-        # train_loader = DataLoader(image_dataset, batch_size=args.batch_size, shuffle=True)
+        print(len(dataset))
 
         # loss
         criterion = nn.CrossEntropyLoss()
@@ -353,7 +352,7 @@ if __name__ == '__main__':
                     print(f"Best model found at epoch {epoch}, saving model")
                     if not os.path.exists("ckpt"):
                         os.makedirs("ckpt")
-                    torch.save(model.state_dict(), f"./ckpt/hw1-1-{model_option}_fold{i}.ckpt") 
+                    #torch.save(model.state_dict(), f"./ckpt/hw1-1-{model_option}_fold{i}.ckpt") 
                     best_acc = valid_acc
                     stale = 0
                 else:
@@ -386,6 +385,7 @@ if __name__ == '__main__':
             filename_list += filename
 
         for i in range(n_split):
+            print(f"fold {i}:")
             if model_option == "A":
                 print("A: CNN")
                 model = CNN().to(device)
@@ -413,7 +413,7 @@ if __name__ == '__main__':
         for j in range(num_tests):
             vote_box = []
             for i in range(n_split):
-                print(predictions[i][j])
+                #print(predictions[i][j])
                 vote_box.append(predictions[i][j])
             counts = Counter(vote_box)
             # get the frequency of the most.
@@ -425,15 +425,17 @@ if __name__ == '__main__':
                 # flip to decide...
                 out = [random.choice(out)]
             # turn list into single value
-            print(f"==={j}=== out:",out)
+            # print(f"==={j}=== out:",out)
             out = out[0]
             prediction_final.append(out)
-        print(prediction_final)
+        #print(prediction_final)
 
         # write_result
         df = pd.DataFrame() # apply pd.DataFrame format 
-        df["filename"] = filename_list
+        df["filename"] = [x.split('/')[-1] for x in filename_list]
         df["label"] = prediction_final
-        df.to_csv(f"val_{model_option}.csv",index = False)
+        if not os.path.exists(des_path):
+            os.makedirs(des_path)
+        df.to_csv(os.path.join(des_path, f"val_{model_option}.csv"),index = False)
 
 
