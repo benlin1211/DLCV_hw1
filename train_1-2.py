@@ -4,7 +4,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
-from torchvision.models import vgg16, VGG16_Weights
+from torchvision.models import vgg16
 
 from torch.utils.data import ConcatDataset, DataLoader, Subset, Dataset
 import random
@@ -26,6 +26,7 @@ def fix_random_seed():
         torch.cuda.manual_seed_all(myseed)
         
 ## TODO 重寫 Datalaoder: 199X_mask.png/ 199X_sat.jpg
+# Size: input: 512x512, output: 512x512
 class ImageDataset(Dataset):
     def __init__(self, path, tfm, mode, files = None):
         super(ImageDataset).__init__()
@@ -144,88 +145,25 @@ def validate(model, criterion, valid_loader, device, lamb):
 
     return valid_loss, valid_acc
 
-
+# Ref: https://blog.csdn.net/qq_37923586/article/details/106843736
 # Model A
-class CNN(nn.Module):
-    def __init__(self):
-        super(CNN, self).__init__()
-        # torch.nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding)
-        # torch.nn.MaxPool2d(kernel_size, stride, padding)
-        # input 維度 [3, 128, 128]
-        # stride and padding: 影響第一維
-        # pooling: 縮小每張圖的pixel
-        self.cnn1 = nn.Sequential(
-            nn.Conv2d(3, 64, 3, 1, 1),  # [64, 128, 128]
-            nn.BatchNorm2d(64),
-            nn.ReLU(),                  # [64, 128, 128
-            nn.MaxPool2d(2, 2, 0),      # [64, 64, 64]
-        )
-        self.cnn2 = nn.Sequential(
-            nn.Conv2d(64, 128, 3, 1, 1), # [128, 64, 64] 
-
-            nn.BatchNorm2d(128),
-            nn.ReLU(),                  # [128, 64, 64]
-            nn.MaxPool2d(2, 2, 0),      # [128, 32, 32] 
-        )
-        self.cnn3 = nn.Sequential( 
-            nn.Conv2d(128, 256, 3, 1, 1), # [256, 32, 32]
-            nn.BatchNorm2d(256),
-            nn.ReLU(),                  # [256, 32, 32] 
-            nn.MaxPool2d(2, 2, 0),      # [256, 16, 16]
-        )
-        self.cnn4 = nn.Sequential(
-            nn.Conv2d(256, 512, 3, 1, 1), # [512, 16, 16]  
-            nn.BatchNorm2d(512),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2, 0),       # [512, 8, 8]
-        )
-        self.cnn5 = nn.Sequential(
-            nn.Conv2d(512, 512, 3, 1, 1), # [512, 8, 8] 
-            nn.BatchNorm2d(512),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2, 0),       # [512, 4, 4] 
-        )
-        self.fc = nn.Sequential(
-            nn.Linear(512*7*7, 1024),
-            nn.ReLU(),
-            nn.Linear(1024, 512),
-            nn.ReLU(),
-            nn.Linear(512, 50)
-        )
-        self.relu = nn.ReLU()
-        
-    def forward(self, x):
-        # print(x.shape)
-        out = self.cnn1(x)
-        # print(out.shape)
-        out = self.cnn2(out)
-        # print(out.shape)
-        out = self.cnn3(out)
-        # print(out.shape) 
-        out = self.cnn4(out)
-        # print(out.shape) 
-        out = self.cnn5(out)
-        # print(out.shape) 
-        out = out.view(out.size()[0], -1)
-        return self.fc(out)
-
-
-# Model B
 class VGG16_FCN32(nn.Module): 
     def __init__(self, num_freeze_layer=0):
         super(VGG16_FCN32, self).__init__()
         #self.feather_extractor = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
-        self.vgg = vgg16(weights=VGG16_Weights.IMAGENET1K_V1)
+        
+        # https://stackoverflow.com/questions/66085134/get-some-layers-in-a-pytorch-model-that-is-not-defined-by-nn-sequential
+        self.vgg = nn.Sequential(*list(vgg16().children())[:-1])
         
         self.fcn32 = nn.Sequential(
-            nn.Linear(1000, 50),
+            nn.Linear(25088, 50),
             #nn.ReLU(),ßßß
             #nn.Linear(1000, 50),
         )
 
     def forward(self, x):
         out = self.vgg(x)
-        out = self.classifier(out)
+        out = self.fcn32(out)
         return out
 
 
