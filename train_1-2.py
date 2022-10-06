@@ -4,7 +4,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
-from torchvision.models import resnet50, ResNet50_Weights
+from torchvision.models import vgg16, VGG16_Weights
 
 from torch.utils.data import ConcatDataset, DataLoader, Subset, Dataset
 import random
@@ -25,12 +25,12 @@ def fix_random_seed():
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(myseed)
         
-
+## TODO 重寫 Datalaoder: 199X_mask.png/ 199X_sat.jpg
 class ImageDataset(Dataset):
     def __init__(self, path, tfm, mode, files = None):
         super(ImageDataset).__init__()
         self.path = path
-        self.files = sorted([os.path.join(path,x) for x in os.listdir(path) if x.endswith(".png")], key=lambda x: (int(x.split('/')[-1].split('_')[0]), int(x.split('/')[-1].split('_')[1].split('.')[0]))) # TODO: sort with correct order!
+        self.files = [os.path.join(path,x) for x in os.listdir(path) if x.endswith(".jpg") or x.endswith(".png")]
         # Ref: https://stackoverflow.com/questions/54399946/python-glob-sorting-files-of-format-int-int-the-same-as-windows-name-sort
 
         if files != None:
@@ -211,31 +211,20 @@ class CNN(nn.Module):
 
 
 # Model B
-class Resnet(nn.Module): 
+class VGG16_FCN32(nn.Module): 
     def __init__(self, num_freeze_layer=0):
-        super(Resnet, self).__init__()
+        super(VGG16_FCN32, self).__init__()
         #self.feather_extractor = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
-        self.feather_extractor = resnet50(weights=ResNet50_Weights.IMAGENET1K_V2)
+        self.vgg = vgg16(weights=VGG16_Weights.IMAGENET1K_V1)
         
-        # Freeze top layers (if needed)
-        for i,child in enumerate(self.feather_extractor.children()):
-            if i < num_freeze_layer:
-                for param in child.parameters():
-                    param.requires_grad = False
-                #print(i, "(freezed):", child)
-            else:
-                pass
-                #print(i, ":", child)
-
-        self.classifier = nn.Sequential(
+        self.fcn32 = nn.Sequential(
             nn.Linear(1000, 50),
             #nn.ReLU(),ßßß
             #nn.Linear(1000, 50),
         )
-        
 
     def forward(self, x):
-        out = self.feather_extractor(x)
+        out = self.vgg(x)
         out = self.classifier(out)
         return out
 
@@ -309,11 +298,11 @@ if __name__ == '__main__':
             valid_loader = DataLoader(valid_set, batch_size=batch_size, shuffle=True)
             # model
             if model_option == "A":
-                print("A: CNN")
-                model = CNN().to(device)
+                print("A: VGG16_FCN32")
+                model = VGG16_FCN32().to(device)
             elif model_option == "B":
-                print("B: Resnet")
-                model = Resnet().to(device)
+                print("B: ???")
+                #model = Resnet().to(device)
             print(model)
 
             # optimizer
