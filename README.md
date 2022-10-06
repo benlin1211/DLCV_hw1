@@ -22,6 +22,7 @@ You can run the following command to run virtual environment, and install all th
     pip3 install -r requirements.txt
     
 If you have 2 CUDA: please do the following: (the training is based on CUDA:1)
+
     export CUDA_VISIBLE_DEVICES=0,1
 
 Note that using packages with different versions will very likely lead to compatibility issues, so make sure that you install the correct version if one is specified above. E-mail or ask the TAs first if you want to import other packages.
