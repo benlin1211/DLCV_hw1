@@ -79,6 +79,10 @@ def train(model, criterion, optimizer, train_loader, device, lamb = 0.001):
         
         # Calculate the cross-entropy loss.
         # We don't need to apply softmax before computing cross-entropy as it is done automatically.
+        #print(labels)
+        #print(labels.shape)
+        #print(logits)
+        #print(logits.shape)
         loss = criterion(logits, labels.to(device)) + lamb * l2_regularizer(model)
         # print("single loss:", loss)
         # myLoss = customCrossEntropy(logits, labels.to(device))
@@ -352,7 +356,7 @@ if __name__ == '__main__':
                     print(f"Best model found at epoch {epoch}, saving model")
                     if not os.path.exists("ckpt"):
                         os.makedirs("ckpt")
-                    #torch.save(model.state_dict(), f"./ckpt/hw1-1-{model_option}_fold{i}.ckpt") 
+                    torch.save(model.state_dict(), f"./ckpt/hw1-1-{model_option}_fold{i}.ckpt") 
                     best_acc = valid_acc
                     stale = 0
                 else:

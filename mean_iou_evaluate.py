@@ -32,12 +32,20 @@ def mean_iou_score(pred, labels):
     Compute mean IoU score over 6 classes
     '''
     mean_iou = 0
+    # print("mIoU")
+    # print(pred.shape)
+    # print(labels.shape)
+    # print(pred)
+    # print(labels)
+    # print(pred == 0)
+    # print(labels == 0)
     for i in range(6):
         tp_fp = np.sum(pred == i)
         tp_fn = np.sum(labels == i)
         tp = np.sum((pred == i) * (labels == i))
         iou = tp / (tp_fp + tp_fn - tp)
         mean_iou += iou / 6
+        print(f"tp_fp:{tp_fp}, tp_fn:{tp_fn}, tp:{tp}, tp_fp + tp_fn - tp:{tp_fp + tp_fn - tp}")
         print('class #%d : %1.5f'%(i, iou))
     print('\nmean_iou: %f\n' % mean_iou)
 

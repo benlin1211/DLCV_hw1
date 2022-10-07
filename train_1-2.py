@@ -4,7 +4,10 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
-from torchvision.models import vgg16
+import torch.nn.functional as F
+from torchvision.models import vgg16, VGG16_Weights
+
+from mean_iou_evaluate import mean_iou_score
 
 from torch.utils.data import ConcatDataset, DataLoader, Subset, Dataset
 import random
@@ -15,6 +18,38 @@ from PIL import Image
 
 from collections import Counter
 
+# Ref: https://stackoverflow.com/questions/67400443/convert-rgb-values-to-one-hot-labels
+num_classes = 7
+color_dict = [[0,   255, 255], # Urban
+              [255, 255, 0  ], # Agriculture
+              [255, 0,   255], # Rangeland
+              [0  , 255, 0  ], # Forest
+              [0  , 0  , 255], # Water
+              [255, 255, 255], # Barren
+              [0,   0,   0  ],]# Unknown
+one_hot_dict = np.identity(num_classes)    
+
+
+# Ref: https://stackoverflow.com/questions/43884463/how-to-convert-rgb-image-to-one-hot-encoded-3d-array-based-on-color-using-numpy
+def rgb_to_onehot(rgb_arr, color_dict):
+    num_classes = len(color_dict)
+    print("rgb_arr",rgb_arr)
+    print("rgb_arr",rgb_arr.shape)
+    shape =  (num_classes,) + rgb_arr.shape[1:3]
+
+    print("rgb_to_onehot",shape)
+    arr = np.zeros( shape, dtype=np.int8 )
+
+    return arr
+
+# Ref: https://stackoverflow.com/questions/43884463/how-to-convert-rgb-image-to-one-hot-encoded-3d-array-based-on-color-using-numpy
+def onehot_to_rgb(onehot, color_dict):
+    single_layer = np.argmax(onehot, axis=-1)
+    output = np.zeros( onehot.shape[:2]+(3,) )
+    for k in color_dict.keys():
+        output[single_layer==k] = color_dict[k]
+    return np.uint8(output)
+
 
 def fix_random_seed():
     myseed = 6666  # set a random seed for reproducibility
@@ -24,37 +59,65 @@ def fix_random_seed():
     torch.manual_seed(myseed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(myseed)
-        
-## TODO 重寫 Datalaoder: 199X_mask.png/ 199X_sat.jpg
+
+
+def read_masks(seg, shape):
+    masks = np.zeros((1,shape[1],shape[2]))
+    mask = seg #(seg >= 128).astype(int)
+    mask = 4 * mask[0, :, :] + 2 * mask[1,:, :] + mask[2,:, :]
+    mask = np.expand_dims(mask, axis=0)
+
+    masks[mask == 3] = 0  # (Cyan: 011) Urban land 
+    masks[mask == 6] = 1  # (Yellow: 110) Agriculture land 
+    masks[mask == 5] = 2  # (Purple: 101) Rangeland 
+    masks[mask == 2] = 3  # (Green: 010) Forest land 
+    masks[mask == 1] = 4  # (Blue: 001) Water 
+    masks[mask == 7] = 5  # (White: 111) Barren land 
+    masks[mask == 0] = 6  # (Black: 000) Unknown
+
+    return masks       
+
+# Datalaoder:  199X_sat.jpg (input) / 199X_mask.png (GTH)
 # Size: input: 512x512, output: 512x512
 class ImageDataset(Dataset):
-    def __init__(self, path, tfm, mode, files = None):
+    def __init__(self, path, tfm, mode):
         super(ImageDataset).__init__()
         self.path = path
-        self.files = [os.path.join(path,x) for x in os.listdir(path) if x.endswith(".jpg") or x.endswith(".png")]
+        self.files_input = sorted( [os.path.join(path,x) for x in os.listdir(path) if x.endswith(".jpg")], key=lambda x: (int(x.split('/')[-1].split('_')[0])) )
+        # for file in self.files_input:
+        #     print(file)
         # Ref: https://stackoverflow.com/questions/54399946/python-glob-sorting-files-of-format-int-int-the-same-as-windows-name-sort
 
-        if files != None:
-            self.files = files
+        self.files_gth = sorted( [os.path.join(path,x) for x in os.listdir(path) if x.endswith(".png")], key=lambda x: (int(x.split('/')[-1].split('_')[0])) )
+        
+        #for file in self.files_gth:
+        #    print(file)
+
         self.transform = tfm
         self.mode = mode
 
     def __len__(self):
-        return len(self.files)
+        return len(self.files_input)
   
     def __getitem__(self,idx):
-        fname = self.files[idx] 
-        im = Image.open(fname)
-        # 32x32
-        im = self.transform(im)
-        # im = self.data[idx]
+        fname_input = self.files_input[idx] 
+        img_input = Image.open(fname_input)
+        img_input = self.transform(img_input)
+        # print(fname_input)
+
         if self.mode == "train":
-            label = int(fname.split("/")[-1].split("_")[0])
-            # print(label)
+            fname_gth = self.files_gth[idx] 
+            img_gth = Image.open(fname_gth)
+            img_gth = self.transform(img_gth)
+            #print(fname_gth)
+            ## TODO 把gth改成single value 
+            img_gth = read_masks(img_gth, img_gth.shape)
+
+
         elif self.mode == "test":
-            label = fname # return filename instead
+            img_gth = None 
             # print(" test has no label")
-        return im,label
+        return img_input, img_gth
 
 
 def l2_regularizer(model):
@@ -73,14 +136,24 @@ def train(model, criterion, optimizer, train_loader, device, lamb = 0.001):
 
         # A batch consists of image data and corresponding labels.
         imgs, labels = batch
+        #print("imgs",imgs.shape)
+        #print("labels",labels.shape)
+
 
         # Forward the data. (Make sure data and model are on the same device.)
         logits = model(imgs.to(device))
-        # print(labels.shape)
+        predict = F.log_softmax(logits,dim = 1)
         
+
+        labels = labels.reshape(batch_size, -1)
+        labels = torch.tensor(labels, dtype=torch.long)
+        predict = predict.reshape(batch_size, 7, -1)
+        #print("labels",labels.shape)
+        #print("predict",predict.shape)
+
         # Calculate the cross-entropy loss.
         # We don't need to apply softmax before computing cross-entropy as it is done automatically.
-        loss = criterion(logits, labels.to(device)) + lamb * l2_regularizer(model)
+        loss = criterion(predict, labels.to(device)) + lamb * l2_regularizer(model)
         # print("single loss:", loss)
         # myLoss = customCrossEntropy(logits, labels.to(device))
 
@@ -97,11 +170,12 @@ def train(model, criterion, optimizer, train_loader, device, lamb = 0.001):
         optimizer.step()
 
         # Compute the accuracy for current batch.
-        acc = (logits.argmax(dim=-1) == labels.to(device)).float().mean()
+        acc = mean_iou_score(predict.argmax(dim=1).numpy(), labels.numpy())
 
         # Record the loss and accuracy.
         train_loss.append(loss.item())
         train_accs.append(acc)
+        print(loss)
     
     train_loss = sum(train_loss) / len(train_loss)
     train_acc = sum(train_accs) / len(train_accs)
@@ -121,7 +195,6 @@ def validate(model, criterion, valid_loader, device, lamb):
 
         # A batch consists of image data and corresponding labels.
         imgs, labels = batch
-        #imgs = imgs.half()
 
         # We don't need gradient in validation.
         # Using torch.no_grad() accelerates the forward process.
@@ -131,7 +204,7 @@ def validate(model, criterion, valid_loader, device, lamb):
         # We can still compute the loss (but not the gradient).
         loss = criterion(logits, labels.to(device)) + lamb * l2_regularizer(model)
         
-        # Compute the accuracy for current batch.
+        # Compute the accuracy(mIoU) for current batch.
         acc = (logits.argmax(dim=-1) == labels.to(device)).float().mean()
 
         # Record the loss and accuracy.
@@ -152,18 +225,29 @@ class VGG16_FCN32(nn.Module):
         super(VGG16_FCN32, self).__init__()
         #self.feather_extractor = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
         
+        # https://blog.csdn.net/qq_37923586/article/details/106843736
         # https://stackoverflow.com/questions/66085134/get-some-layers-in-a-pytorch-model-that-is-not-defined-by-nn-sequential
-        self.vgg = nn.Sequential(*list(vgg16().children())[:-1])
-        
-        self.fcn32 = nn.Sequential(
-            nn.Linear(25088, 50),
-            #nn.ReLU(),ßßß
-            #nn.Linear(1000, 50),
-        )
+        # https://pytorch.org/vision/main/models/generated/torchvision.models.vgg16.html
+        # Ref: https://github.com/sairin1202/fcn32-pytorch/blob/master/pytorch-fcn32.py
+        self.vgg = nn.Sequential(*list(vgg16(weights=VGG16_Weights.IMAGENET1K_V1 ).children())[:-1])
+        #self.vgg = vgg16(weights=VGG16_Weights.IMAGENET1K_V1 )
+        self.conv=nn.Sequential(nn.Conv2d(512,4096,7),
+                                nn.ReLU(inplace=True),
+                                nn.Dropout(),
+                                nn.Conv2d(4096,4096,1),
+                                nn.ReLU(inplace=True),
+                                nn.Dropout(),
+                                )
+        self.score_fr=nn.Conv2d(4096,num_classes,1) 
+        self.upscore=nn.ConvTranspose2d(num_classes,num_classes,512,1)
+        # in_channels(=n_class), out_channels(=n_class), kernel_size(back to origin), stride
+
 
     def forward(self, x):
         out = self.vgg(x)
-        out = self.fcn32(out)
+        out = self.conv(out)
+        out = self.score_fr(out)
+        out = self.upscore(out)
         return out
 
 
@@ -174,7 +258,7 @@ if __name__ == '__main__':
     parser.add_argument("dest", help="CSV prediction output location (for test mode)")
     parser.add_argument("--mode", help="train or test", default="train")   
     parser.add_argument("--checkpth", help="Checkpoint location")
-    parser.add_argument("--batch_size", help="batch size", type=int, default=32)
+    parser.add_argument("--batch_size", help="batch size", type=int, default=1)
     parser.add_argument("--model_option", help="Choose \"A\" or \"B\". (CNN from scratch or Resnet)", default="A")
     parser.add_argument("--learning_rate", help="learning rate", type=float, default=5e-5)
     parser.add_argument("--weight_decay", help="weight decay", type=float, default=0.0)
@@ -207,13 +291,14 @@ if __name__ == '__main__':
     fix_random_seed()
 
     # GPU
-    device = "cuda:1" if torch.cuda.is_available() else "cpu"
+    #device = "cuda:1" if torch.cuda.is_available() else "cpu"
+    device = "cpu"
+    
     
     train_tfm = transforms.Compose([
-        transforms.Resize((224, 224)), # Upsampling
+        #transforms.Resize((224, 224)), # Upsampling
         # best: no ColorJitter
         #transforms.ColorJitter(brightness=0.5, contrast=0.5, saturation=0.5, hue=0.1),
-        transforms.RandomHorizontalFlip(p=0.5),
         transforms.ToTensor(),
     ])
    
@@ -236,7 +321,7 @@ if __name__ == '__main__':
             valid_loader = DataLoader(valid_set, batch_size=batch_size, shuffle=True)
             # model
             if model_option == "A":
-                print("A: VGG16_FCN32")
+                print("A: VGG16 + FCN32")
                 model = VGG16_FCN32().to(device)
             elif model_option == "B":
                 print("B: ???")
@@ -314,8 +399,8 @@ if __name__ == '__main__':
         for i in range(n_split):
             print(f"fold {i}:")
             if model_option == "A":
-                print("A: CNN")
-                model = CNN().to(device)
+                print("A: VGG16 + FCN32")
+                model = VGG16_FCN32().to(device)
             elif model_option == "B":
                 print("B: Resnet")
                 model = Resnet().to(device)
