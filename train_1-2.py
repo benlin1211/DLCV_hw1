@@ -7,8 +7,6 @@ import torchvision.transforms as transforms
 import torch.nn.functional as F
 from torchvision.models import vgg16, VGG16_Weights
 
-from mean_iou_evaluate import mean_iou_score
-
 from torch.utils.data import ConcatDataset, DataLoader, Subset, Dataset
 import random
 from tqdm import tqdm
@@ -18,37 +16,26 @@ from PIL import Image
 
 from collections import Counter
 
-# Ref: https://stackoverflow.com/questions/67400443/convert-rgb-values-to-one-hot-labels
-num_classes = 7
-color_dict = [[0,   255, 255], # Urban
-              [255, 255, 0  ], # Agriculture
-              [255, 0,   255], # Rangeland
-              [0  , 255, 0  ], # Forest
-              [0  , 0  , 255], # Water
-              [255, 255, 255], # Barren
-              [0,   0,   0  ],]# Unknown
-one_hot_dict = np.identity(num_classes)    
 
 
-# Ref: https://stackoverflow.com/questions/43884463/how-to-convert-rgb-image-to-one-hot-encoded-3d-array-based-on-color-using-numpy
-def rgb_to_onehot(rgb_arr, color_dict):
-    num_classes = len(color_dict)
-    print("rgb_arr",rgb_arr)
-    print("rgb_arr",rgb_arr.shape)
-    shape =  (num_classes,) + rgb_arr.shape[1:3]
+def mean_iou_score(pred, labels):
+    '''
+    Compute mean IoU score over 6 classes
+    '''
+    mean_iou = 0
+    pred = pred.numpy()
+    labels = labels.numpy()
+    for i in range(6):
+        tp_fp = np.sum(pred == i)
+        tp_fn = np.sum(labels == i)
+        tp = np.sum((pred == i) * (labels == i))
+        iou = tp / (tp_fp + tp_fn - tp + 1e-8) # Avoid NaN
+        mean_iou += iou / 6
+        #print(f"tp_fp:{tp_fp}, tp_fn:{tp_fn}, tp:{tp}, tp_fp + tp_fn - tp:{tp_fp + tp_fn - tp}")
+        #print('class #%d : %1.5f'%(i, iou))
+    #print('\nmean_iou: %f\n' % mean_iou)
 
-    print("rgb_to_onehot",shape)
-    arr = np.zeros( shape, dtype=np.int8 )
-
-    return arr
-
-# Ref: https://stackoverflow.com/questions/43884463/how-to-convert-rgb-image-to-one-hot-encoded-3d-array-based-on-color-using-numpy
-def onehot_to_rgb(onehot, color_dict):
-    single_layer = np.argmax(onehot, axis=-1)
-    output = np.zeros( onehot.shape[:2]+(3,) )
-    for k in color_dict.keys():
-        output[single_layer==k] = color_dict[k]
-    return np.uint8(output)
+    return mean_iou
 
 
 def fix_random_seed():
@@ -109,10 +96,10 @@ class ImageDataset(Dataset):
             fname_gth = self.files_gth[idx] 
             img_gth = Image.open(fname_gth)
             img_gth = self.transform(img_gth)
+            img_gth = read_masks(img_gth, img_gth.shape)
             #print(fname_gth)
             ## TODO 把gth改成single value 
-            img_gth = read_masks(img_gth, img_gth.shape)
-
+            img_gth = torch.tensor(img_gth, dtype=torch.int64)
 
         elif self.mode == "test":
             img_gth = None 
@@ -124,36 +111,33 @@ def l2_regularizer(model):
     return sum(p.pow(2).sum() for p in model.parameters())
 
 
-def train(model, criterion, optimizer, train_loader, device, lamb = 0.001):
+def train(model, criterion, optimizer, train_loader, batch_size, device, lamb = 0.001):
     # Make sure the model is in train mode before training
     model.train()
     
     # These are used to record information in training.
     train_loss = []
-    train_accs = []
+    train_mean_iou = []
     
-    for batch in tqdm(train_loader):
+    pbar = tqdm(train_loader)
+    for batch in pbar:
 
         # A batch consists of image data and corresponding labels.
         imgs, labels = batch
         #print("imgs",imgs.shape)
         #print("labels",labels.shape)
 
-
         # Forward the data. (Make sure data and model are on the same device.)
         logits = model(imgs.to(device))
-        predict = F.log_softmax(logits,dim = 1)
         
-
         labels = labels.reshape(batch_size, -1)
-        labels = torch.tensor(labels, dtype=torch.long)
-        predict = predict.reshape(batch_size, 7, -1)
+        logits = logits.reshape(batch_size, 7, -1)
         #print("labels",labels.shape)
         #print("predict",predict.shape)
 
         # Calculate the cross-entropy loss.
         # We don't need to apply softmax before computing cross-entropy as it is done automatically.
-        loss = criterion(predict, labels.to(device)) + lamb * l2_regularizer(model)
+        loss = criterion(logits, labels.to(device)) + lamb * l2_regularizer(model)
         # print("single loss:", loss)
         # myLoss = customCrossEntropy(logits, labels.to(device))
 
@@ -169,52 +153,67 @@ def train(model, criterion, optimizer, train_loader, device, lamb = 0.001):
         # Update the parameters with computed gradients.
         optimizer.step()
 
-        # Compute the accuracy for current batch.
-        acc = mean_iou_score(predict.argmax(dim=1).numpy(), labels.numpy())
+        # Compute tp_fn, tp_fp, fn for current batch.
 
         # Record the loss and accuracy.
         train_loss.append(loss.item())
-        train_accs.append(acc)
-        print(loss)
-    
+
+        # Compute the accuracy for current batch.\
+        pred = torch.argmax(logits, dim=1).clone().detach().cpu()
+        mean_IoU = mean_iou_score(pred, labels.clone().detach().cpu())
+        train_mean_iou.append(mean_IoU)
+
+        pbar.set_description("Loss %.4lf, mIoU %.4lf" % (loss, mean_IoU))
+        # train_accs.append(acc)
+
+    # The average loss and accuracy for entire training set is the average of the recorded values.
     train_loss = sum(train_loss) / len(train_loss)
-    train_acc = sum(train_accs) / len(train_accs)
+    # TODO: change variable name of train_acc
+    train_acc = sum(train_mean_iou) / len(train_mean_iou) # return iou 
 
     return train_loss, train_acc
 
     
-def validate(model, criterion, valid_loader, device, lamb):
+def validate(model, criterion, valid_loader, batch_size, device, lamb):
     # Make sure the model is in eval mode so that some modules like dropout are disabled and work normally.
     model.eval()
     
     valid_loss = []
-    valid_accs = []
+    valid_mean_iou = []
 
     # Iterate the validation set by batches.
-    for batch in tqdm(valid_loader):
+    pbar = tqdm(valid_loader)
+    for batch in pbar:
 
         # A batch consists of image data and corresponding labels.
         imgs, labels = batch
+        logits = model(imgs.to(device))
 
         # We don't need gradient in validation.
         # Using torch.no_grad() accelerates the forward process.
         with torch.no_grad():
             logits = model(imgs.to(device))
+            labels = labels.reshape(batch_size, -1)
+            logits = logits.reshape(batch_size, 7, -1)
 
         # We can still compute the loss (but not the gradient).
         loss = criterion(logits, labels.to(device)) + lamb * l2_regularizer(model)
-        
-        # Compute the accuracy(mIoU) for current batch.
-        acc = (logits.argmax(dim=-1) == labels.to(device)).float().mean()
 
         # Record the loss and accuracy.
         valid_loss.append(loss.item())
-        valid_accs.append(acc)
-        #break
+
+        # Compute the accuracy for current batch.
+        pred = torch.argmax(logits, dim=1).clone().detach().cpu()
+        mean_IoU = mean_iou_score(pred, labels.clone().detach().cpu())
+        valid_mean_iou.append(mean_IoU)
+
+        pbar.set_description("Loss %.4lf, mIoU %.4lf" % (loss, mean_IoU) )
+        # train_accs.append(acc)
 
     # The average loss and accuracy for entire validation set is the average of the recorded values.
     valid_loss = sum(valid_loss) / len(valid_loss)
-    valid_acc = sum(valid_accs) / len(valid_accs)
+    # TODO: change variable name of valid_acc
+    valid_acc = sum(valid_mean_iou) / len(valid_mean_iou) 
 
     return valid_loss, valid_acc
 
@@ -228,27 +227,38 @@ class VGG16_FCN32(nn.Module):
         # https://blog.csdn.net/qq_37923586/article/details/106843736
         # https://stackoverflow.com/questions/66085134/get-some-layers-in-a-pytorch-model-that-is-not-defined-by-nn-sequential
         # https://pytorch.org/vision/main/models/generated/torchvision.models.vgg16.html
-        # Ref: https://github.com/sairin1202/fcn32-pytorch/blob/master/pytorch-fcn32.py
-        self.vgg = nn.Sequential(*list(vgg16(weights=VGG16_Weights.IMAGENET1K_V1 ).children())[:-1])
-        #self.vgg = vgg16(weights=VGG16_Weights.IMAGENET1K_V1 )
-        self.conv=nn.Sequential(nn.Conv2d(512,4096,7),
-                                nn.ReLU(inplace=True),
-                                nn.Dropout(),
-                                nn.Conv2d(4096,4096,1),
+        # ** https://github.com/sairin1202/fcn32-pytorch/blob/master/pytorch-fcn32.py **
+        # https://github.com/pochih/FCN-pytorch/blob/master/python/fcn.py
+        # Ref: https://github.com/wkentaro/pytorch-fcn/blob/main/torchfcn/models/fcn32s.py
+        self.vgg = nn.Sequential(*list(vgg16(weights=VGG16_Weights.IMAGENET1K_V1 ).children())[:-2])
+
+        self.conv1=nn.Sequential(nn.Conv2d(512,4096,2), # nn.Conv2d(512,4096,7)
                                 nn.ReLU(inplace=True),
                                 nn.Dropout(),
                                 )
-        self.score_fr=nn.Conv2d(4096,num_classes,1) 
-        self.upscore=nn.ConvTranspose2d(num_classes,num_classes,512,1)
-        # in_channels(=n_class), out_channels(=n_class), kernel_size(back to origin), stride
 
+        self.conv2=nn.Sequential(nn.Conv2d(4096,4096,1),
+                                nn.ReLU(inplace=True),
+                                nn.Dropout()
+                                )
+        self.score_fr=nn.Conv2d(4096,7,1) # num_classes = 7 
+        self.upscore = nn.ConvTranspose2d(7, 7, 64, stride=32) # num_classes = 7 
 
     def forward(self, x):
+        #print("fffff")
+        #print(x.shape)
         out = self.vgg(x)
-        out = self.conv(out)
+        #print(out.shape)
+        out = self.conv1(out)
+        #print(out.shape)
+        out = self.conv2(out)
+        #print(out.shape)
         out = self.score_fr(out)
-        out = self.upscore(out)
-        return out
+        #print(out.shape)
+        score = self.upscore(out)
+        #print(score.shape)
+
+        return score
 
 
 if __name__ == '__main__':
@@ -257,7 +267,7 @@ if __name__ == '__main__':
     parser.add_argument("src", help="Training data location")
     parser.add_argument("dest", help="CSV prediction output location (for test mode)")
     parser.add_argument("--mode", help="train or test", default="train")   
-    parser.add_argument("--checkpth", help="Checkpoint location")
+    parser.add_argument("--checkpth", help="Checkpoint location", default = "ckpt_seg")
     parser.add_argument("--batch_size", help="batch size", type=int, default=1)
     parser.add_argument("--model_option", help="Choose \"A\" or \"B\". (CNN from scratch or Resnet)", default="A")
     parser.add_argument("--learning_rate", help="learning rate", type=float, default=5e-5)
@@ -291,12 +301,12 @@ if __name__ == '__main__':
     fix_random_seed()
 
     # GPU
-    #device = "cuda:1" if torch.cuda.is_available() else "cpu"
-    device = "cpu"
+    device = "cuda:1" if torch.cuda.is_available() else "cpu"
+    #device = "cpu"
     
     
     train_tfm = transforms.Compose([
-        #transforms.Resize((224, 224)), # Upsampling
+        transforms.Resize((512, 512)), # Upsampling
         # best: no ColorJitter
         #transforms.ColorJitter(brightness=0.5, contrast=0.5, saturation=0.5, hue=0.1),
         transforms.ToTensor(),
@@ -325,7 +335,7 @@ if __name__ == '__main__':
                 model = VGG16_FCN32().to(device)
             elif model_option == "B":
                 print("B: ???")
-                #model = Resnet().to(device)
+                model = None
             print(model)
 
             # optimizer
@@ -344,12 +354,12 @@ if __name__ == '__main__':
                 print('Epoch-{0} lr: {1}'.format(epoch, optimizer.param_groups[0]['lr']))
                 
                 # ---------- Training ----------
-                train_loss, train_acc = train(model, criterion, optimizer, train_loader, device, lamb=l2_lamb)
+                train_loss, train_acc = train(model, criterion, optimizer, train_loader, batch_size, device, lamb=l2_lamb)
                 print(f"[ Train | {epoch + 1:03d}/{n_epochs:03d} ] loss = {train_loss:.5f}, acc = {train_acc:.5f}")
                 scheduler.step()
                     
                 # ---------- Validation ----------
-                valid_loss, valid_acc = validate(model, criterion, valid_loader, device, lamb=l2_lamb)
+                valid_loss, valid_acc = validate(model, criterion, valid_loader, batch_size, device, lamb=l2_lamb)
                 print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f}")
 
                 # update logs
@@ -359,12 +369,11 @@ if __name__ == '__main__':
                     print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f}")
 
                 # save models
-                
                 if valid_acc > best_acc:
                     print(f"Best model found at epoch {epoch}, saving model")
-                    if not os.path.exists("ckpt"):
-                        os.makedirs("ckpt")
-                    #torch.save(model.state_dict(), f"./ckpt/hw1-1-{model_option}_fold{i}.ckpt") 
+                    if not os.path.exists(model_path):
+                        os.makedirs(model_path)
+                    torch.save(model.state_dict(),  os.path.join( model_path, "hw1-2-{model_option}_fold{i}.ckpt") ) 
                     best_acc = valid_acc
                     stale = 0
                 else:
@@ -403,9 +412,9 @@ if __name__ == '__main__':
                 model = VGG16_FCN32().to(device)
             elif model_option == "B":
                 print("B: Resnet")
-                model = Resnet().to(device)
+                model = None
 
-            model.load_state_dict(torch.load(f"./ckpt/hw1-1-{model_option}_fold{i}.ckpt"))
+            model.load_state_dict(torch.load( os.path.join( model_path, "hw1-2-{model_option}_fold{i}.ckpt")))
             model.eval()
             
             with torch.no_grad():
