@@ -13,30 +13,12 @@ from tqdm import tqdm
 from sklearn.model_selection import KFold
 import pandas as pd
 from PIL import Image
-
 from collections import Counter
 
+from mean_iou_evaluate import mean_iou_score
 
-
-def mean_iou_score(pred, labels):
-    '''
-    Compute mean IoU score over 6 classes
-    '''
-    mean_iou = 0
-    pred = pred.numpy()
-    labels = labels.numpy()
-    for i in range(6):
-        tp_fp = np.sum(pred == i)
-        tp_fn = np.sum(labels == i)
-        tp = np.sum((pred == i) * (labels == i))
-        iou = tp / (tp_fp + tp_fn - tp + 1e-8) # Avoid NaN
-        mean_iou += iou / 6
-        #print(f"tp_fp:{tp_fp}, tp_fn:{tp_fn}, tp:{tp}, tp_fp + tp_fn - tp:{tp_fp + tp_fn - tp}")
-        #print('class #%d : %1.5f'%(i, iou))
-    #print('\nmean_iou: %f\n' % mean_iou)
-
-    return mean_iou
-
+#  NAN indicates there is no pixel predicted as that class in the validation dataset
+#  0 indicates there is some pixel predicted as that class, but none of them are correctly placed.
 
 def fix_random_seed():
     myseed = 6666  # set a random seed for reproducibility
@@ -110,6 +92,23 @@ class ImageDataset(Dataset):
 def l2_regularizer(model):
     return sum(p.pow(2).sum() for p in model.parameters())
 
+def write_mask(masks, mask, i): 
+    # masks: group of mask tensor images
+    # mask: i-th image waiting to join the group
+    # i: index  
+    #print(mask.shape)
+    mask = mask.reshape(1,512,512)
+    mask = 4 * mask[:, :, 0] + 2 * mask[:, :, 1] + mask[:, :, 2]
+    masks[i, mask == 3] = 0  # (Cyan: 011) Urban land 
+    masks[i, mask == 6] = 1  # (Yellow: 110) Agriculture land 
+    masks[i, mask == 5] = 2  # (Purple: 101) Rangeland 
+    masks[i, mask == 2] = 3  # (Green: 010) Forest land 
+    masks[i, mask == 1] = 4  # (Blue: 001) Water 
+    masks[i, mask == 7] = 5  # (White: 111) Barren land 
+    masks[i, mask == 0] = 6  # (Black: 000) Unknown 
+
+    return masks
+
 
 def train(model, criterion, optimizer, train_loader, batch_size, device, lamb = 0.001):
     # Make sure the model is in train mode before training
@@ -117,10 +116,11 @@ def train(model, criterion, optimizer, train_loader, batch_size, device, lamb = 
     
     # These are used to record information in training.
     train_loss = []
-    train_mean_iou = []
-    
-    pbar = tqdm(train_loader)
-    for batch in pbar:
+    train_pred = np.empty((len(train_loader), 512, 512))
+    train_labels = np.empty((len(train_loader), 512, 512))
+
+    pbar = tqdm(enumerate(train_loader))
+    for i, batch in pbar:
 
         # A batch consists of image data and corresponding labels.
         imgs, labels = batch
@@ -130,14 +130,12 @@ def train(model, criterion, optimizer, train_loader, batch_size, device, lamb = 
         # Forward the data. (Make sure data and model are on the same device.)
         logits = model(imgs.to(device))
         
-        labels = labels.reshape(batch_size, -1)
-        logits = logits.reshape(batch_size, 7, -1)
-        #print("labels",labels.shape)
-        #print("predict",predict.shape)
+        print("labels",labels.shape)
+        print("logits",logits.shape)
 
         # Calculate the cross-entropy loss.
         # We don't need to apply softmax before computing cross-entropy as it is done automatically.
-        loss = criterion(logits, labels.to(device)) + lamb * l2_regularizer(model)
+        loss = criterion(logits.reshape(batch_size, 7, -1), labels.reshape(batch_size, -1).to(device)) + lamb * l2_regularizer(model)
         # print("single loss:", loss)
         # myLoss = customCrossEntropy(logits, labels.to(device))
 
@@ -160,16 +158,17 @@ def train(model, criterion, optimizer, train_loader, batch_size, device, lamb = 
 
         # Compute the accuracy for current batch.\
         pred = torch.argmax(logits, dim=1).clone().detach().cpu()
-        mean_IoU = mean_iou_score(pred, labels.clone().detach().cpu())
-        train_mean_iou.append(mean_IoU)
+        train_pred = write_mask(train_pred, pred, i)
+        labels = labels.clone().detach().cpu()
+        train_labels = write_mask(train_labels, labels, i)
 
-        pbar.set_description("Loss %.4lf, mIoU %.4lf" % (loss, mean_IoU))
+        pbar.set_description("Loss %.4lf, mIoU %.4lf" % (loss))
         # train_accs.append(acc)
 
     # The average loss and accuracy for entire training set is the average of the recorded values.
     train_loss = sum(train_loss) / len(train_loss)
     # TODO: change variable name of train_acc
-    train_acc = sum(train_mean_iou) / len(train_mean_iou) # return iou 
+    train_acc = mean_iou_score(train_pred, train_labels) # return iou 
 
     return train_loss, train_acc
 
@@ -280,12 +279,13 @@ if __name__ == '__main__':
     parser.add_argument("--l2_reg_lambda", help="Lambda value for L2 regularizer", type=float, default=0.001)   
     args = parser.parse_args()
     print(vars(args))
-
+    
     src_path = args.src
     des_path = args.dest
     mode = args.mode
     model_path = args.checkpth
     batch_size = args.batch_size
+    assert batch_size==1, "batch_size shoult be 1 (one image per time!)"
     model_option = args.model_option
     lr = args.learning_rate
     weight_decay = args.weight_decay

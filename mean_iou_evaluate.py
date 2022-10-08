@@ -3,6 +3,7 @@ import scipy.misc
 import imageio
 import argparse
 import os
+from tqdm import tqdm
 
 def read_masks(filepath):
     '''
@@ -12,8 +13,9 @@ def read_masks(filepath):
     file_list.sort()
     n_masks = len(file_list)
     masks = np.empty((n_masks, 512, 512))
-
-    for i, file in enumerate(file_list):
+    pbar = tqdm(enumerate(file_list))
+    for i, file in pbar:
+        pbar.set_description(f"{i}th filename: {file}")
         mask = imageio.imread(os.path.join(filepath, file))
         mask = (mask >= 128).astype(int)
         mask = 4 * mask[:, :, 0] + 2 * mask[:, :, 1] + mask[:, :, 2]
@@ -27,25 +29,21 @@ def read_masks(filepath):
 
     return masks
 
+
+#  NAN indicates there is no pixel predicted as that class in the validation dataset
+#  0 indicates there is some pixel predicted as that class, but none of them are correctly placed.
 def mean_iou_score(pred, labels):
     '''
     Compute mean IoU score over 6 classes
     '''
     mean_iou = 0
-    # print("mIoU")
-    # print(pred.shape)
-    # print(labels.shape)
-    # print(pred)
-    # print(labels)
-    # print(pred == 0)
-    # print(labels == 0)
     for i in range(6):
         tp_fp = np.sum(pred == i)
         tp_fn = np.sum(labels == i)
         tp = np.sum((pred == i) * (labels == i))
         iou = tp / (tp_fp + tp_fn - tp)
         mean_iou += iou / 6
-        print(f"tp_fp:{tp_fp}, tp_fn:{tp_fn}, tp:{tp}, tp_fp + tp_fn - tp:{tp_fp + tp_fn - tp}")
+        #print(f"tp_fp:{tp_fp}, tp_fn:{tp_fn}, tp:{tp}, tp_fp + tp_fn - tp:{tp_fp + tp_fn - tp}")
         print('class #%d : %1.5f'%(i, iou))
     print('\nmean_iou: %f\n' % mean_iou)
 
@@ -59,7 +57,8 @@ if __name__ == '__main__':
     parser.add_argument('-p', '--pred', help='prediction masks directory', type=str)
     args = parser.parse_args()
 
-    pred = read_masks(args.pred)
-    labels = read_masks(args.labels)
-
+    pred = read_masks(args.pred) #2000, 512, 512
+    labels = read_masks(args.labels) #2000, 512, 512
+    print(pred.shape) 
+    print(labels.shape)
     mean_iou_score(pred, labels)
