@@ -1,5 +1,6 @@
 import os
 import argparse
+from re import S
 import numpy as np
 import torch
 import torch.nn as nn
@@ -16,6 +17,8 @@ from PIL import Image
 from collections import Counter
 
 from mean_iou_evaluate import mean_iou_score
+from viz_mask import viz_data
+import imageio
 
 #  NAN indicates there is no pixel predicted as that class in the validation dataset
 #  0 indicates there is some pixel predicted as that class, but none of them are correctly placed.
@@ -29,6 +32,23 @@ def fix_random_seed():
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(myseed)
 
+voc_cls = {'urban':0, 
+           'rangeland': 2,
+           'forest':3,  
+           'unknown':6,  
+           'barreb land':5,  
+           'Agriculture land':1,  
+           'water':4} 
+
+cls_color = {
+    0:  [0, 255, 255],
+    1:  [255, 255, 0],
+    2:  [255, 0, 255],
+    3:  [0, 255, 0],
+    4:  [0, 0, 255],
+    5:  [255, 255, 255],
+    6: [0, 0, 0],
+}
 
 def read_masks(seg, shape):
     masks = np.zeros((1,shape[1],shape[2]))
@@ -82,11 +102,12 @@ class ImageDataset(Dataset):
             #print(fname_gth)
             ## TODO 把gth改成single value 
             img_gth = torch.tensor(img_gth, dtype=torch.int64)
+            return img_input, img_gth
 
         elif self.mode == "test":
-            img_gth = None 
             # print(" test has no label")
-        return img_input, img_gth
+            return img_input
+
 
 
 def l2_regularizer(model):
@@ -136,7 +157,6 @@ def train(model, criterion, optimizer, train_loader, batch_size, device, lamb = 
         # We don't need to apply softmax before computing cross-entropy as it is done automatically.
         loss = criterion(logits.reshape(batch_size, 7, -1), labels.reshape(batch_size, -1).to(device)) + lamb * l2_regularizer(model)
         # print("single loss:", loss)
-        # myLoss = customCrossEntropy(logits, labels.to(device))
 
         # Gradients stored in the parameters in the previous step should be cleared out first.
         optimizer.zero_grad()
@@ -234,21 +254,21 @@ class VGG16_FCN32(nn.Module):
         # Ref: https://github.com/wkentaro/pytorch-fcn/blob/main/torchfcn/models/fcn32s.py
         self.vgg = nn.Sequential(*list(vgg16(weights=VGG16_Weights.IMAGENET1K_V1 ).children())[:-2])
 
-        # self.conv1=nn.Sequential(nn.Conv2d(512,4096,1), # nn.Conv2d(512,4096,7) ㄉ
-        #                         nn.ReLU(inplace=True),
-        #                         nn.Dropout(),
-        #                         )
-        # self.conv2=nn.Sequential(nn.Conv2d(4096,4096,1),
-        #                         nn.ReLU(inplace=True),
-        #                         nn.Dropout()
-        #                         )
-        # self.score_fr=nn.Conv2d(4096,7,2) # num_classes = 7 
-        # self.upscore = nn.ConvTranspose2d(7, 7, 64, stride=32) # num_classes = 7 
-        self.conv=nn.Sequential(nn.Conv2d(512,7,1),
+        self.conv1=nn.Sequential(nn.Conv2d(512,4096,1), # nn.Conv2d(512,4096,7) ㄉ
+                                nn.ReLU(inplace=True),
+                                nn.Dropout(),
+                                )
+        self.conv2=nn.Sequential(nn.Conv2d(4096,4096,2), # nn.Conv2d(4096,4096,1)
                                 nn.ReLU(inplace=True),
                                 nn.Dropout()
                                 )
-        self.upsampling = nn.Upsample(scale_factor=32, mode='bilinear')
+        self.score_fr=nn.Conv2d(4096,7,1) # num_classes = 7 
+        self.upscore = nn.ConvTranspose2d(7, 7, 64, stride=32) # num_classes = 7 
+        # self.conv=nn.Sequential(nn.Conv2d(512,7,1),
+        #                         nn.ReLU(inplace=True),
+        #                         nn.Dropout()
+        #                         )
+        # self.upsampling = nn.Upsample(scale_factor=32, mode='bilinear')
 
         
     def forward(self, x):
@@ -257,20 +277,19 @@ class VGG16_FCN32(nn.Module):
         out = self.vgg(x)
         #print("vgg",out.shape)
 
+        out = self.conv1(out)
+        #print("conv1",out.shape)
+        out = self.conv2(out)
+        #print("conv2",out.shape)
+        out = self.score_fr(out)
+        #print("score_fr",out.shape)
+        score = self.upscore(out)
+        #print("upscore",score.shape)
 
-        # out = self.conv1(out)
-        # print("conv1",out.shape)
-        # out = self.conv2(out)
-        # print("conv2",out.shape)
-        # out = self.score_fr(out)
-        # print("score_fr",out.shape)
-        # score = self.upscore(out)
-        # print("upscore",score.shape)
-
-        out = self.conv(out)
-        #print("conv",out.shape)  
-        score = self.upsampling(out)
-        #print("upsampling",out.shape)   
+        # out = self.conv(out)
+        # #print("conv",out.shape)  
+        # score = self.upsampling(out)
+        # #print("upsampling",out.shape)   
 
         return score
 
@@ -279,7 +298,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="hw 1-1 train",
                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("src", help="Training data location")
-    parser.add_argument("dest", help="CSV prediction output location (for test mode)")
+    parser.add_argument("dest", help="Image prediction output location (for test mode)")
     parser.add_argument("--mode", help="train or test", default="train")   
     parser.add_argument("--checkpth", help="Checkpoint location", default = "ckpt_seg")
     parser.add_argument("--batch_size", help="batch size", type=int, default=5)
@@ -288,7 +307,7 @@ if __name__ == '__main__':
     parser.add_argument("--weight_decay", help="weight decay", type=float, default=0.0)
     parser.add_argument("--scheduler_lr_decay_step", help="scheduler learning rate decay step ", type=int, default=1)
     parser.add_argument("--scheduler_lr_decay_ratio", help="scheduler learning rate decay ratio ", type=float, default=0.99)
-    parser.add_argument("--n_epochs", help="n_epochs", type=int, default=20)
+    parser.add_argument("--n_epochs", help="n_epochs", type=int, default=40)
     parser.add_argument("--n_split", help="k-fold split numbers", type=int, default=5)      
     parser.add_argument("--l2_reg_lambda", help="Lambda value for L2 regularizer", type=float, default=0.001)   
     args = parser.parse_args()
@@ -320,7 +339,7 @@ if __name__ == '__main__':
     train_tfm = transforms.Compose([
         transforms.Resize((512, 512)), # Upsampling
         # best: no ColorJitter
-        #transforms.ColorJitter(brightness=0.5, contrast=0.5, saturation=0.5, hue=0.1),
+        # transforms.ColorJitter(brightness=0.5, contrast=0.5, saturation=0.5, hue=0.1),
         transforms.ToTensor(),
     ])
    
@@ -380,7 +399,7 @@ if __name__ == '__main__':
                     print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}")
 
                 # save models for report
-                if epoch == 1 or  epoch == int(n_epochs/2) or epoch == n_epochs-1:
+                if epoch == 0 or  epoch == int(n_epochs/2) or epoch == n_epochs-1:
                     print(f"Saving stage model")
                     if not os.path.exists(model_path):
                         os.makedirs(model_path)
@@ -396,6 +415,10 @@ if __name__ == '__main__':
 
                 # update epoch record
                 epoch = epoch + 1  
+            # if i == 0:
+            #     print("Training is done.")
+            #     break
+                
 
 
 
@@ -406,15 +429,9 @@ if __name__ == '__main__':
         # Load dataset
         dataset = ImageDataset(src_path, tfm=train_tfm, mode=mode)
         num_tests = len(dataset)
-        print(num_tests)
 
         test_dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
-        predictions = [ [] for _ in range(n_split) ]
-
-        # get filenames
-        filename_list = []
-        for _, filename in tqdm(test_dataloader):
-            filename_list += filename
+        test_pred = np.zeros((num_tests, 512, 512))
 
         for i in range(n_split):
             print(f"fold {i}:")
@@ -424,41 +441,86 @@ if __name__ == '__main__':
             elif model_option == "B":
                 print("B: Resnet")
                 model = None
-
-            model.load_state_dict(torch.load( os.path.join( model_path, "hw1-2-{model_option}_fold{i}.ckpt")))
+            ckpt_name = f"hw1-2-{model_option}_fold{i}.ckpt"
+            model.load_state_dict(torch.load( os.path.join(model_path, ckpt_name)))
+            print(f"Checkpoint {ckpt_name} loaded.")
             model.eval()
             
             with torch.no_grad():
                 j=0
-                for data, _ in tqdm(test_dataloader):
-                    test_pred = model(data.to(device))
-                    test_label = np.argmax(test_pred.cpu().data.numpy(), axis=1)
-                    predictions[i] += test_label.squeeze().tolist()
-                    # j=j+1
-                    # if j>2:
-                    #     break
+                pbar = tqdm(test_dataloader)
+                for data in pbar:
+                    #print("data",data)
+                    logits = model(data.to(device))
+                    #print("logits",logits.shape)
+                    test_pred[j] = np.argmax(logits.detach().cpu(), axis=1)
+                    j=j+1
+                    #print("pred",pred.shape)
+
+            if i == 0:
+                print("Testing is done. (one fold)")
+                break            
+
+        # Convert prediction(1,512,512) to RGB image(512,512,3)
+        #test_pred_imgs = np.empty((num_tests, 512, 512, 3))
+        #pred_imgs = np.empty((512, 512, 3))
+        if not os.path.exists(des_path):
+            os.makedirs(des_path)
+
+        cmap = cls_color
+        i=0
+        for pred in test_pred:
+            # get prediction kinds
+            cs = np.unique(pred)
+            img = np.zeros((512, 512, 3))
+
+            #print(i, cs)
+            color_masks = np.zeros((len(cs),512, 512, 3))
+            for k,c in enumerate(cs):
+                print( cmap[c] )
+                mask = np.zeros((512, 512))
+                ind = np.where(pred==c)
+                mask[ind[0], ind[1]] = 1
+
+                # img = viz_data(img, mask, color=cmap[c])
+                color_mask = np.zeros((512*512, 3))
+                l_loc = np.where(mask.flatten() == 1)[0]
+                color_mask[l_loc, : ] = cmap[c]
+                # color_mask: 512x512, 3. bg: [0,0,0] fg: cmap[c]
+                color_mask = color_mask.reshape((512, 512, 3))  
+                #print(color_mask)
+
+                # overlap the predict classes
+                # assumption: we only have one label per pixel. 
+                color_masks[k] = color_mask 
+
+            for color_mask in color_masks:
+                img = img + color_mask ##?
+
+            imageio.imsave(os.path.join(des_path, f"{i}_mask_pred.png"), np.uint8(img))
+            i = i+1
 
         # ensembling    
-        prediction_final = []
-        for i in range(n_split):
-            print(len( predictions[i]))
-        for j in range(num_tests):
-            vote_box = []
-            for i in range(n_split):
-                #print(predictions[i][j])
-                vote_box.append(predictions[i][j])
-            counts = Counter(vote_box)
-            # get the frequency of the most.
-            max_count = counts.most_common(1)[0][1] 
-            # get the result that equals to that frequency.
-            out = [value for value, count in counts.most_common() if count == max_count]
-            # draw:
-            if len(out)>1: 
-                # flip to decide...
-                out = [random.choice(out)]
-            # turn list into single value
-            # print(f"==={j}=== out:",out)
-            out = out[0]
-            prediction_final.append(out)
-        #print(prediction_final)
+        # prediction_final = []
+        # for i in range(n_split):
+        #     print(len( predictions[i]))
+        # for j in range(num_tests):
+        #     vote_box = []
+        #     for i in range(n_split):
+        #         #print(predictions[i][j])
+        #         vote_box.append(predictions[i][j])
+        #     counts = Counter(vote_box)
+        #     # get the frequency of the most.
+        #     max_count = counts.most_common(1)[0][1] 
+        #     # get the result that equals to that frequency.
+        #     out = [value for value, count in counts.most_common() if count == max_count]
+        #     # draw:
+        #     if len(out)>1: 
+        #         # flip to decide...
+        #         out = [random.choice(out)]
+        #     # turn list into single value
+        #     # print(f"==={j}=== out:",out)
+        #     out = out[0]
+        #     prediction_final.append(out)
+        # #print(prediction_final)
 

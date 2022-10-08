@@ -70,6 +70,8 @@ def viz_data(im, seg, color, inner_alpha = 0.3, edge_alpha = 1, edge_width = 5):
     l_loc = np.where(seg.flatten() == 1)[0]
     color_mask[l_loc, : ] = color
     color_mask = np.reshape(color_mask, im.shape)
+    print(im.shape)
+    print(color_mask.shape)
     mask = np.concatenate((seg[:,:,np.newaxis],seg[:,:,np.newaxis],seg[:,:,np.newaxis]), axis = -1)
     
     color_edge = np.zeros((edge.shape[0]*edge.shape[1], 3))
@@ -94,7 +96,7 @@ def arg_parse():
                     help="path to seg")
 
     args = parser.parse_args()
-
+    #python3 viz_mask.py --img_path "./hw1_data/hw1_data/p2_data/validation/0005_sat.jpg" --seg_path "hw1_data/hw1_data/p2_data/validation/0005_mask.png"
     return args
 
 def read_masks(seg, shape):
@@ -125,7 +127,7 @@ if __name__ == '__main__':
     masks=read_masks(seg, img.shape)
 
 
-    
+
     cs = np.unique(masks)
 
     for c in cs:
