@@ -13,12 +13,15 @@ def read_masks(filepath):
     file_list.sort()
     n_masks = len(file_list)
     masks = np.empty((n_masks, 512, 512))
+    print(masks.shape)
+    
     pbar = tqdm(enumerate(file_list))
     for i, file in pbar:
         pbar.set_description(f"{i}th filename: {file}")
         mask = imageio.imread(os.path.join(filepath, file))
         mask = (mask >= 128).astype(int)
         mask = 4 * mask[:, :, 0] + 2 * mask[:, :, 1] + mask[:, :, 2]
+        #print(mask.shape)
         masks[i, mask == 3] = 0  # (Cyan: 011) Urban land 
         masks[i, mask == 6] = 1  # (Yellow: 110) Agriculture land 
         masks[i, mask == 5] = 2  # (Purple: 101) Rangeland 

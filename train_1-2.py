@@ -92,21 +92,21 @@ class ImageDataset(Dataset):
 def l2_regularizer(model):
     return sum(p.pow(2).sum() for p in model.parameters())
 
-def write_mask(masks, mask, i): 
+def write_mask(masks, mask_batch, indices): 
     # masks: group of mask tensor images
     # mask: i-th image waiting to join the group
     # i: index  
-    #print(mask.shape)
-    mask = mask.reshape(1,512,512)
-    mask = 4 * mask[:, :, 0] + 2 * mask[:, :, 1] + mask[:, :, 2]
-    masks[i, mask == 3] = 0  # (Cyan: 011) Urban land 
-    masks[i, mask == 6] = 1  # (Yellow: 110) Agriculture land 
-    masks[i, mask == 5] = 2  # (Purple: 101) Rangeland 
-    masks[i, mask == 2] = 3  # (Green: 010) Forest land 
-    masks[i, mask == 1] = 4  # (Blue: 001) Water 
-    masks[i, mask == 7] = 5  # (White: 111) Barren land 
-    masks[i, mask == 0] = 6  # (Black: 000) Unknown 
 
+    for mask in mask_batch:
+        for i in indices:
+            masks[i, mask == 3] = 0  # (Cyan: 011) Urban land 
+            masks[i, mask == 6] = 1  # (Yellow: 110) Agriculture land 
+            masks[i, mask == 5] = 2  # (Purple: 101) Rangeland 
+            masks[i, mask == 2] = 3  # (Green: 010) Forest land 
+            masks[i, mask == 1] = 4  # (Blue: 001) Water 
+            masks[i, mask == 7] = 5  # (White: 111) Barren land 
+            masks[i, mask == 0] = 6  # (Black: 000) Unknown 
+            
     return masks
 
 
@@ -116,23 +116,22 @@ def train(model, criterion, optimizer, train_loader, batch_size, device, lamb = 
     
     # These are used to record information in training.
     train_loss = []
-    train_pred = np.empty((len(train_loader), 512, 512))
-    train_labels = np.empty((len(train_loader), 512, 512))
+    train_pred = np.empty((len(train_loader)*batch_size, 512, 512))
+    train_labels = np.empty((len(train_loader)*batch_size, 512, 512))
 
-    pbar = tqdm(enumerate(train_loader))
-    for i, batch in pbar:
+    pbar = tqdm(train_loader)
+    i = 0
+    for batch in pbar:
 
         # A batch consists of image data and corresponding labels.
         imgs, labels = batch
-        #print("imgs",imgs.shape)
-        #print("labels",labels.shape)
+        #print("imgs",imgs.shape) #torch.Size([1, 1, 512, 512])
+        #print("labels",labels.shape) #torch.Size([1, 512, 512])
 
         # Forward the data. (Make sure data and model are on the same device.)
         logits = model(imgs.to(device))
-        
-        print("labels",labels.shape)
-        print("logits",logits.shape)
-
+        #print("logits",logits.shape) #torch.Size([1, 7, 512, 512])
+    
         # Calculate the cross-entropy loss.
         # We don't need to apply softmax before computing cross-entropy as it is done automatically.
         loss = criterion(logits.reshape(batch_size, 7, -1), labels.reshape(batch_size, -1).to(device)) + lamb * l2_regularizer(model)
@@ -151,26 +150,26 @@ def train(model, criterion, optimizer, train_loader, batch_size, device, lamb = 
         # Update the parameters with computed gradients.
         optimizer.step()
 
-        # Compute tp_fn, tp_fp, fn for current batch.
-
         # Record the loss and accuracy.
         train_loss.append(loss.item())
 
-        # Compute the accuracy for current batch.\
-        pred = torch.argmax(logits, dim=1).clone().detach().cpu()
-        train_pred = write_mask(train_pred, pred, i)
-        labels = labels.clone().detach().cpu()
-        train_labels = write_mask(train_labels, labels, i)
+        # Save prediction and gth for mIoU computation.
+        # pred = torch.argmax(logits, dim=1).clone().detach().cpu()
+        # train_pred = write_mask(train_pred, pred.reshape(batch_size, 512,512), range(i,i+batch_size))
 
-        pbar.set_description("Loss %.4lf, mIoU %.4lf" % (loss))
-        # train_accs.append(acc)
+        # labels = labels.clone().detach().cpu()
+        # train_labels = write_mask(train_labels, labels.reshape(batch_size, 512,512), range(i,i+batch_size))
+
+        i=i+batch_size
+        pbar.set_description("Loss %.4lf |" % loss)
 
     # The average loss and accuracy for entire training set is the average of the recorded values.
     train_loss = sum(train_loss) / len(train_loss)
-    # TODO: change variable name of train_acc
-    train_acc = mean_iou_score(train_pred, train_labels) # return iou 
 
-    return train_loss, train_acc
+    #train_mIoU = mean_iou_score(train_pred, train_labels) # return iou 
+    train_mIoU = None
+
+    return train_loss, train_mIoU
 
     
 def validate(model, criterion, valid_loader, batch_size, device, lamb):
@@ -178,10 +177,12 @@ def validate(model, criterion, valid_loader, batch_size, device, lamb):
     model.eval()
     
     valid_loss = []
-    valid_mean_iou = []
+    valid_pred = np.empty((len(valid_loader)*batch_size, 512, 512))
+    valid_labels = np.empty((len(valid_loader)*batch_size, 512, 512))
 
     # Iterate the validation set by batches.
     pbar = tqdm(valid_loader)
+    i=0
     for batch in pbar:
 
         # A batch consists of image data and corresponding labels.
@@ -192,29 +193,31 @@ def validate(model, criterion, valid_loader, batch_size, device, lamb):
         # Using torch.no_grad() accelerates the forward process.
         with torch.no_grad():
             logits = model(imgs.to(device))
-            labels = labels.reshape(batch_size, -1)
-            logits = logits.reshape(batch_size, 7, -1)
 
         # We can still compute the loss (but not the gradient).
-        loss = criterion(logits, labels.to(device)) + lamb * l2_regularizer(model)
-
+        loss = criterion(logits.reshape(batch_size, 7, -1), labels.reshape(batch_size, -1).to(device)) + lamb * l2_regularizer(model)
+        
         # Record the loss and accuracy.
         valid_loss.append(loss.item())
 
-        # Compute the accuracy for current batch.
-        pred = torch.argmax(logits, dim=1).clone().detach().cpu()
-        mean_IoU = mean_iou_score(pred, labels.clone().detach().cpu())
-        valid_mean_iou.append(mean_IoU)
+        # Save prediction and gth for mIoU computation.
+        # pred = torch.argmax(logits, dim=1).clone().detach().cpu()
+        # valid_pred = write_mask(valid_pred, pred.reshape(batch_size,512,512), range(i,i+batch_size))
+        
+        # labels = labels.clone().detach().cpu()
+        # valid_labels = write_mask(valid_labels, labels.reshape(batch_size,512,512), range(i,i+batch_size))
 
-        pbar.set_description("Loss %.4lf, mIoU %.4lf" % (loss, mean_IoU) )
-        # train_accs.append(acc)
+        i=i+batch_size
+        pbar.set_description("Loss %.4lf |" % loss)
+        
 
     # The average loss and accuracy for entire validation set is the average of the recorded values.
     valid_loss = sum(valid_loss) / len(valid_loss)
-    # TODO: change variable name of valid_acc
-    valid_acc = sum(valid_mean_iou) / len(valid_mean_iou) 
 
-    return valid_loss, valid_acc
+    # valid_mIoU = mean_iou_score(valid_pred, valid_labels) # return iou 
+    valid_mIoU = None
+
+    return valid_loss, valid_mIoU
 
 # Ref: https://blog.csdn.net/qq_37923586/article/details/106843736
 # Model A
@@ -231,31 +234,43 @@ class VGG16_FCN32(nn.Module):
         # Ref: https://github.com/wkentaro/pytorch-fcn/blob/main/torchfcn/models/fcn32s.py
         self.vgg = nn.Sequential(*list(vgg16(weights=VGG16_Weights.IMAGENET1K_V1 ).children())[:-2])
 
-        self.conv1=nn.Sequential(nn.Conv2d(512,4096,2), # nn.Conv2d(512,4096,7)
-                                nn.ReLU(inplace=True),
-                                nn.Dropout(),
-                                )
-
-        self.conv2=nn.Sequential(nn.Conv2d(4096,4096,1),
+        # self.conv1=nn.Sequential(nn.Conv2d(512,4096,1), # nn.Conv2d(512,4096,7) ㄉ
+        #                         nn.ReLU(inplace=True),
+        #                         nn.Dropout(),
+        #                         )
+        # self.conv2=nn.Sequential(nn.Conv2d(4096,4096,1),
+        #                         nn.ReLU(inplace=True),
+        #                         nn.Dropout()
+        #                         )
+        # self.score_fr=nn.Conv2d(4096,7,2) # num_classes = 7 
+        # self.upscore = nn.ConvTranspose2d(7, 7, 64, stride=32) # num_classes = 7 
+        self.conv=nn.Sequential(nn.Conv2d(512,7,1),
                                 nn.ReLU(inplace=True),
                                 nn.Dropout()
                                 )
-        self.score_fr=nn.Conv2d(4096,7,1) # num_classes = 7 
-        self.upscore = nn.ConvTranspose2d(7, 7, 64, stride=32) # num_classes = 7 
+        self.upsampling = nn.Upsample(scale_factor=32, mode='bilinear')
 
+        
     def forward(self, x):
         #print("fffff")
-        #print(x.shape)
+        #print("input",x.shape)
         out = self.vgg(x)
-        #print(out.shape)
-        out = self.conv1(out)
-        #print(out.shape)
-        out = self.conv2(out)
-        #print(out.shape)
-        out = self.score_fr(out)
-        #print(out.shape)
-        score = self.upscore(out)
-        #print(score.shape)
+        #print("vgg",out.shape)
+
+
+        # out = self.conv1(out)
+        # print("conv1",out.shape)
+        # out = self.conv2(out)
+        # print("conv2",out.shape)
+        # out = self.score_fr(out)
+        # print("score_fr",out.shape)
+        # score = self.upscore(out)
+        # print("upscore",score.shape)
+
+        out = self.conv(out)
+        #print("conv",out.shape)  
+        score = self.upsampling(out)
+        #print("upsampling",out.shape)   
 
         return score
 
@@ -267,15 +282,14 @@ if __name__ == '__main__':
     parser.add_argument("dest", help="CSV prediction output location (for test mode)")
     parser.add_argument("--mode", help="train or test", default="train")   
     parser.add_argument("--checkpth", help="Checkpoint location", default = "ckpt_seg")
-    parser.add_argument("--batch_size", help="batch size", type=int, default=1)
+    parser.add_argument("--batch_size", help="batch size", type=int, default=5)
     parser.add_argument("--model_option", help="Choose \"A\" or \"B\". (CNN from scratch or Resnet)", default="A")
     parser.add_argument("--learning_rate", help="learning rate", type=float, default=5e-5)
     parser.add_argument("--weight_decay", help="weight decay", type=float, default=0.0)
     parser.add_argument("--scheduler_lr_decay_step", help="scheduler learning rate decay step ", type=int, default=1)
     parser.add_argument("--scheduler_lr_decay_ratio", help="scheduler learning rate decay ratio ", type=float, default=0.99)
-    parser.add_argument("--n_epochs", help="n_epochs", type=int, default=50)
-    parser.add_argument("--n_split", help="k-fold split numbers", type=int, default=5)    
-    parser.add_argument("--patience", help="Training patience", type=int, default=10)   
+    parser.add_argument("--n_epochs", help="n_epochs", type=int, default=20)
+    parser.add_argument("--n_split", help="k-fold split numbers", type=int, default=5)      
     parser.add_argument("--l2_reg_lambda", help="Lambda value for L2 regularizer", type=float, default=0.001)   
     args = parser.parse_args()
     print(vars(args))
@@ -285,7 +299,6 @@ if __name__ == '__main__':
     mode = args.mode
     model_path = args.checkpth
     batch_size = args.batch_size
-    assert batch_size==1, "batch_size shoult be 1 (one image per time!)"
     model_option = args.model_option
     lr = args.learning_rate
     weight_decay = args.weight_decay
@@ -294,7 +307,6 @@ if __name__ == '__main__':
     
     n_epochs = args.n_epochs
     n_split = args.n_split
-    patience = args.patience
     l2_lamb = args.l2_reg_lambda
 
     # fix random seed
@@ -344,44 +356,43 @@ if __name__ == '__main__':
             # scheduler
             scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=lr_decay_step, gamma=lr_decay_ratio)    
 
-            stale = 0 # count for patiency
-            best_acc = 0
+            best_loss = 0
             # Training loop
-
             for epoch in range(n_epochs):
                 
                 print("Fold:",i)
                 print('Epoch-{0} lr: {1}'.format(epoch, optimizer.param_groups[0]['lr']))
                 
                 # ---------- Training ----------
-                train_loss, train_acc = train(model, criterion, optimizer, train_loader, batch_size, device, lamb=l2_lamb)
-                print(f"[ Train | {epoch + 1:03d}/{n_epochs:03d} ] loss = {train_loss:.5f}, acc = {train_acc:.5f}")
+                train_loss, train_mIoU = train(model, criterion, optimizer, train_loader, batch_size, device, lamb=l2_lamb)
+                print(f"[ Train | {epoch + 1:03d}/{n_epochs:03d} ] loss = {train_loss:.5f}")
                 scheduler.step()
                     
                 # ---------- Validation ----------
-                valid_loss, valid_acc = validate(model, criterion, valid_loader, batch_size, device, lamb=l2_lamb)
-                print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f}")
+                print("Start validation.")
+                valid_loss, valid_mIoU = validate(model, criterion, valid_loader, batch_size, device, lamb=l2_lamb)
+                print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}")
 
                 # update logs
-                if valid_acc > best_acc:
-                    print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f} -> best")
+                if valid_loss > best_loss:
+                    print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f} -> best")
                 else:
-                    print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f}")
+                    print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}")
 
-                # save models
-                if valid_acc > best_acc:
+                # save models for report
+                if epoch == 1 or  epoch == int(n_epochs/2) or epoch == n_epochs-1:
+                    print(f"Saving stage model")
+                    if not os.path.exists(model_path):
+                        os.makedirs(model_path)
+                    torch.save(model.state_dict(),  os.path.join( model_path, f"hw1-2-{model_option}_epoch{epoch}_fold{i}.ckpt") ) 
+
+                # save best models    
+                if valid_loss > best_loss:
                     print(f"Best model found at epoch {epoch}, saving model")
                     if not os.path.exists(model_path):
                         os.makedirs(model_path)
-                    torch.save(model.state_dict(),  os.path.join( model_path, "hw1-2-{model_option}_fold{i}.ckpt") ) 
-                    best_acc = valid_acc
-                    stale = 0
-                else:
-                    stale += 1
-                    print(f"No improvment {stale}")
-                    if stale > patience:
-                        print(f"No improvment {patience} consecutive epochs, early stopping")
-                        break
+                    torch.save(model.state_dict(),  os.path.join( model_path, f"hw1-2-{model_option}_fold{i}.ckpt") ) 
+                    best_loss = valid_loss
 
                 # update epoch record
                 epoch = epoch + 1  
@@ -450,13 +461,4 @@ if __name__ == '__main__':
             out = out[0]
             prediction_final.append(out)
         #print(prediction_final)
-
-        # write_result
-        df = pd.DataFrame() # apply pd.DataFrame format 
-        df["filename"] = [x.split('/')[-1] for x in filename_list]
-        df["label"] = prediction_final
-        if not os.path.exists(des_path):
-            os.makedirs(des_path)
-        df.to_csv(os.path.join(des_path, f"val_{model_option}.csv"),index = False)
-
 
