@@ -52,21 +52,25 @@ https://machinelearningmastery.com/command-line-arguments-for-your-python-script
 
     bash ./hw1_2.sh ./hw1_data/hw1_data/p2_data/validation result_1-2
 
-#### 1-2B-1
+#### 1-2B-1: x3,x4 with weight
 
-    bash ./hw1_2.sh ./hw1_data/hw1_data/p2_data/validation result_1-2B
+    bash ./hw1_2.sh ./hw1_data/hw1_data/p2_data/validation result_1-2B-1
     
-#### 1-2B-2
+#### 1-2B-2: x3,x4 without weight
 
-    bash ./hw1_2.sh ./hw1_data/hw1_data/p2_data/validation result_1-2B_no_weight
+    bash ./hw1_2.sh ./hw1_data/hw1_data/p2_data/validation result_1-2B-2
+    
+#### 1-2C: Resnet_FCN8s
+
+    bash ./hw1_2.sh ./hw1_data/hw1_data/p2_data/validation result_1-2C
     
 ### Acccuracy
 
-    bash ./eval_1-1.sh "./val_A.csv" "./hw1_data/hw1_data/p1_data/val_gt.csv"
-    bash ./eval_1-1.sh "./val_B.csv" "./hw1_data/hw1_data/p1_data/val_gt.csv"
+    bash ./eval_1-1.sh "./result_1-1/val_A.csv" "./hw1_data/hw1_data/p1_data/val_gt.csv"
+    bash ./eval_1-1.sh "./result_1-1/val_B.csv" "./hw1_data/hw1_data/p1_data/val_gt.csv"
     bash ./eval_1-2.sh "./result_1-2" "./hw1_data/hw1_data/p2_data/validation"
-    bash ./eval_1-2.sh "./result_1-2B" "./hw1_data/hw1_data/p2_data/validation"
-    bash ./eval_1-2.sh "./result_1-2B_no_weight" "./hw1_data/hw1_data/p2_data/validation"
+    bash ./eval_1-2.sh "./result_1-2B-1" "./hw1_data/hw1_data/p2_data/validation"
+    bash ./eval_1-2.sh "./result_1-2B-2" "./hw1_data/hw1_data/p2_data/validation"
 
 # Q&A
 If you have any problems related to HW1, you may
