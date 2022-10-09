@@ -7,6 +7,7 @@ import torch.nn as nn
 import torchvision.transforms as transforms
 import torch.nn.functional as F
 from torchvision.models import vgg16, VGG16_Weights
+from torchvision.models import resnet50, ResNet50_Weights
 
 from torch.utils.data import ConcatDataset, DataLoader, Subset, Dataset
 import random
@@ -113,23 +114,6 @@ class ImageDataset(Dataset):
 def l2_regularizer(model):
     return sum(p.pow(2).sum() for p in model.parameters())
 
-def write_mask(masks, mask_batch, indices): 
-    # masks: group of mask tensor images
-    # mask: i-th image waiting to join the group
-    # i: index  
-
-    for mask in mask_batch:
-        for i in indices:
-            masks[i, mask == 3] = 0  # (Cyan: 011) Urban land 
-            masks[i, mask == 6] = 1  # (Yellow: 110) Agriculture land 
-            masks[i, mask == 5] = 2  # (Purple: 101) Rangeland 
-            masks[i, mask == 2] = 3  # (Green: 010) Forest land 
-            masks[i, mask == 1] = 4  # (Blue: 001) Water 
-            masks[i, mask == 7] = 5  # (White: 111) Barren land 
-            masks[i, mask == 0] = 6  # (Black: 000) Unknown 
-            
-    return masks
-
 
 def train(model, criterion, optimizer, train_loader, batch_size, device, lamb = 0.001):
     # Make sure the model is in train mode before training
@@ -173,13 +157,6 @@ def train(model, criterion, optimizer, train_loader, batch_size, device, lamb = 
         # Record the loss and accuracy.
         train_loss.append(loss.item())
 
-        # Save prediction and gth for mIoU computation.
-        # pred = torch.argmax(logits, dim=1).clone().detach().cpu()
-        # train_pred = write_mask(train_pred, pred.reshape(batch_size, 512,512), range(i,i+batch_size))
-
-        # labels = labels.clone().detach().cpu()
-        # train_labels = write_mask(train_labels, labels.reshape(batch_size, 512,512), range(i,i+batch_size))
-
         i=i+batch_size
         pbar.set_description("Loss %.4lf |" % loss)
 
@@ -220,12 +197,6 @@ def validate(model, criterion, valid_loader, batch_size, device, lamb):
         # Record the loss and accuracy.
         valid_loss.append(loss.item())
 
-        # Save prediction and gth for mIoU computation.
-        # pred = torch.argmax(logits, dim=1).clone().detach().cpu()
-        # valid_pred = write_mask(valid_pred, pred.reshape(batch_size,512,512), range(i,i+batch_size))
-        
-        # labels = labels.clone().detach().cpu()
-        # valid_labels = write_mask(valid_labels, labels.reshape(batch_size,512,512), range(i,i+batch_size))
 
         i=i+batch_size
         pbar.set_description("Loss %.4lf |" % loss)
@@ -254,14 +225,14 @@ class VGG16_FCN32(nn.Module):
         # Ref: https://github.com/wkentaro/pytorch-fcn/blob/main/torchfcn/models/fcn32s.py
         self.vgg = nn.Sequential(*list(vgg16(weights=VGG16_Weights.IMAGENET1K_V1 ).children())[:-2])
 
-        self.conv1=nn.Sequential(nn.Conv2d(512,4096,1), # nn.Conv2d(512,4096,7) ㄉ
+        self.conv1=nn.Sequential(nn.Conv2d(512,4096,2), # nn.Conv2d(512,4096,7) ㄉ
                                 nn.ReLU(inplace=True),
                                 nn.Dropout(),
                                 )
-        self.conv2=nn.Sequential(nn.Conv2d(4096,4096,2), # nn.Conv2d(4096,4096,1)
-                                nn.ReLU(inplace=True),
-                                nn.Dropout()
-                                )
+        # self.conv2=nn.Sequential(nn.Conv2d(4096,4096,2), # nn.Conv2d(4096,4096,1)
+        #                         nn.ReLU(inplace=True),
+        #                         nn.Dropout()
+        #                         )
         self.score_fr=nn.Conv2d(4096,7,1) # num_classes = 7 
         self.upscore = nn.ConvTranspose2d(7, 7, 64, stride=32) # num_classes = 7 
         # self.conv=nn.Sequential(nn.Conv2d(512,7,1),
@@ -279,7 +250,7 @@ class VGG16_FCN32(nn.Module):
 
         out = self.conv1(out)
         #print("conv1",out.shape)
-        out = self.conv2(out)
+        #out = self.conv2(out)
         #print("conv2",out.shape)
         out = self.score_fr(out)
         #print("score_fr",out.shape)
@@ -292,6 +263,135 @@ class VGG16_FCN32(nn.Module):
         # #print("upsampling",out.shape)   
 
         return score
+
+# Ref: https://blog.csdn.net/qq_37923586/article/details/106843736
+# Model B
+class VGG16_FCN8s(nn.Module): 
+    def __init__(self, num_freeze_layer=0):
+        super(VGG16_FCN8s, self).__init__()
+        #self.feather_extractor = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
+        
+        self.vgg = nn.Sequential(*list(vgg16(weights=VGG16_Weights.IMAGENET1K_V1 ).children())[:-2])
+
+        # Ref: https://github.com/pochih/FCN-pytorch/blob/master/python/fcn.py
+        self.relu    = nn.ReLU(inplace=True)
+        self.deconv1 = nn.ConvTranspose2d(512, 512, kernel_size=3, stride=2, padding=1, dilation=1, output_padding=1)
+        self.bn1     = nn.BatchNorm2d(512)
+        self.deconv2 = nn.ConvTranspose2d(512, 256, kernel_size=3, stride=2, padding=1, dilation=1, output_padding=1)
+        self.bn2     = nn.BatchNorm2d(256)
+        self.deconv3 = nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2, padding=1, dilation=1, output_padding=1)
+        self.bn3     = nn.BatchNorm2d(128)
+        self.deconv4 = nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1, dilation=1, output_padding=1)
+        self.bn4     = nn.BatchNorm2d(64)
+        self.deconv5 = nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=1, dilation=1, output_padding=1)
+        self.bn5     = nn.BatchNorm2d(32)
+        self.classifier = nn.Conv2d(32, 7, kernel_size=1) # n_classes = 7
+
+        
+    def forward(self, x):
+        #print("input", x.shape)
+        #https://discuss.pytorch.org/t/accessing-intermediate-layers-of-a-pretrained-network-forward/12113
+        for idx, layer in enumerate(*list(self.vgg.children())):
+            #print(idx)
+            x = layer(x)
+            if idx == 30: # size=(N, 512, x.H/32, x.W/32)
+                x5 = x  
+                #print("x5", x5.shape)
+            elif idx == 23: # size=(N, 512, x.H/16, x.W/16) #more important
+                x4 = x
+                #print("x4", x4.shape)
+            elif idx == 16: # size=(N, 256, x.H/8,  x.W/8) #most important
+                x3 = x
+                #print("x3", x3.shape)
+
+        #print("vgg", x.shape)
+        score = self.relu(self.deconv1(x5))               # size=(N, 512, x.H/16, x.W/16)
+        score = self.bn1(score + 1*x4)                      # element-wise add, size=(N, 512, x.H/16, x.W/16)
+        #print("deconv1", score.shape)
+
+        score = self.relu(self.deconv2(score))            # size=(N, 256, x.H/8, x.W/8)
+        score = self.bn2(score + 1*x3)                      # element-wise add, size=(N, 256, x.H/8, x.W/8)
+        #print("deconv2", score.shape)
+
+        score = self.bn3(self.relu(self.deconv3(score)))  # size=(N, 128, x.H/4, x.W/4)
+        #print("deconv3", score.shape)
+
+        score = self.bn4(self.relu(self.deconv4(score)))  # size=(N, 64, x.H/2, x.W/2)
+        #print("deconv4", score.shape)
+
+        score = self.bn5(self.relu(self.deconv5(score)))  # size=(N, 32, x.H, x.W)
+        #print("deconv5", score.shape)
+        
+        score = self.classifier(score)                    # size=(N, n_class, x.H/1, x.W/1)
+
+        return score  # size=(N, n_class, x.H/1, x.W/1)
+
+
+# Model C
+class Resnet50_FCN8s(nn.Module): 
+    def __init__(self, num_freeze_layer=0):
+        super(Resnet50_FCN8s, self).__init__()
+        #self.feather_extractor = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
+       
+        #self.resnet = nn.Sequential(*list( resnet50(weights=ResNet50_Weights.IMAGENET1K_V2).children())[:-2])
+        self.resnet = nn.Sequential(*list( resnet50(weights=ResNet50_Weights.IMAGENET1K_V2).children())[:-2])
+
+        # Ref: https://github.com/pochih/FCN-pytorch/blob/master/python/fcn.py
+        self.relu    = nn.ReLU(inplace=True)
+        self.deconv1 = nn.ConvTranspose2d(2048, 1024, kernel_size=3, stride=2, padding=1, dilation=1, output_padding=1)
+        self.bn1     = nn.BatchNorm2d(1024)
+        self.deconv2 = nn.ConvTranspose2d(1024, 512, kernel_size=3, stride=2, padding=1, dilation=1, output_padding=1)
+        self.bn2     = nn.BatchNorm2d(512)
+        self.deconv3 = nn.ConvTranspose2d(512, 128, kernel_size=3, stride=2, padding=1, dilation=1, output_padding=1)
+        self.bn3     = nn.BatchNorm2d(128)
+        self.deconv4 = nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1, dilation=1, output_padding=1)
+        self.bn4     = nn.BatchNorm2d(64)
+        self.deconv5 = nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=1, dilation=1, output_padding=1)
+        self.bn5     = nn.BatchNorm2d(32)
+        self.classifier = nn.Conv2d(32, 7, kernel_size=1) # n_classes = 7
+
+        
+    def forward(self, x):
+        #print("input", x.shape)
+        #https://discuss.pytorch.org/t/accessing-intermediate-layers-of-a-pretrained-network-forward/12113
+        for idx, layer in enumerate(self.resnet.children()):
+            #print(idx)
+            x = layer(x)
+            #print(f"idx{idx}", x.shape)
+            if idx == 7: # size=(N, 512, x.H/32, x.W/32)
+                x5 = x  
+                #print("x5", x5.shape)
+            elif idx == 6: # size=(N, 512, x.H/16, x.W/16) #more important
+                x4 = x
+                #print("x4", x4.shape)
+            elif idx == 5: # size=(N, 256, x.H/8,  x.W/8) #most important
+                x3 = x
+                #print("x3", x3.shape)
+
+        #print("resnet", x.shape)
+        score = self.relu(self.deconv1(x5))               # size=(N, 512, x.H/16, x.W/16)
+        #print("deconv1", score.shape)
+        score = self.bn1(score + 1*x4)                      # element-wise add, size=(N, 512, x.H/16, x.W/16)
+        #print("bn1", score.shape)
+
+        score = self.relu(self.deconv2(score))            # size=(N, 256, x.H/8, x.W/8)
+        #print("deconv2", score.shape)
+        score = self.bn2(score + 1*x3)                      # element-wise add, size=(N, 256, x.H/8, x.W/8)
+        #print("bn2", score.shape)
+
+        score = self.bn3(self.relu(self.deconv3(score)))  # size=(N, 128, x.H/4, x.W/4)
+        #print("deconv3", score.shape)
+
+        score = self.bn4(self.relu(self.deconv4(score)))  # size=(N, 64, x.H/2, x.W/2)
+        #print("deconv4", score.shape)
+
+        score = self.bn5(self.relu(self.deconv5(score)))  # size=(N, 32, x.H, x.W)
+        #print("deconv5", score.shape)
+        
+        score = self.classifier(score)                    # size=(N, n_class, x.H/1, x.W/1)
+        #print("classifier", score.shape)
+
+        return score  # size=(N, n_class, x.H/1, x.W/1)
 
 
 if __name__ == '__main__':
@@ -309,7 +409,7 @@ if __name__ == '__main__':
     parser.add_argument("--scheduler_lr_decay_ratio", help="scheduler learning rate decay ratio ", type=float, default=0.99)
     parser.add_argument("--n_epochs", help="n_epochs", type=int, default=40)
     parser.add_argument("--n_split", help="k-fold split numbers", type=int, default=5)      
-    parser.add_argument("--l2_reg_lambda", help="Lambda value for L2 regularizer", type=float, default=0.001)   
+    parser.add_argument("--l2_reg_lambda", help="Lambda value for L2 regularizer", type=float, default=0.0001)   
     args = parser.parse_args()
     print(vars(args))
     
@@ -334,6 +434,7 @@ if __name__ == '__main__':
     # GPU
     device = "cuda:1" if torch.cuda.is_available() else "cpu"
     #device = "cpu"
+    print(f"device = {device}")
     
     
     train_tfm = transforms.Compose([
@@ -365,8 +466,11 @@ if __name__ == '__main__':
                 print("A: VGG16 + FCN32")
                 model = VGG16_FCN32().to(device)
             elif model_option == "B":
-                print("B: ???")
-                model = None
+                print("B: VGG16 + FCN8s")
+                model = VGG16_FCN8s().to(device)
+            elif model_option == "C":
+                print("C: Resnet50 + FCN8s")
+                model = Resnet50_FCN8s().to(device)
             print(model)
 
             # optimizer
@@ -375,7 +479,7 @@ if __name__ == '__main__':
             # scheduler
             scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=lr_decay_step, gamma=lr_decay_ratio)    
 
-            best_loss = 0
+            best_loss = 1e+8
             # Training loop
             for epoch in range(n_epochs):
                 
@@ -393,7 +497,7 @@ if __name__ == '__main__':
                 print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}")
 
                 # update logs
-                if valid_loss > best_loss:
+                if valid_loss < best_loss:
                     print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f} -> best")
                 else:
                     print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}")
@@ -406,7 +510,7 @@ if __name__ == '__main__':
                     torch.save(model.state_dict(),  os.path.join( model_path, f"hw1-2-{model_option}_epoch{epoch}_fold{i}.ckpt") ) 
 
                 # save best models    
-                if valid_loss > best_loss:
+                if valid_loss < best_loss:
                     print(f"Best model found at epoch {epoch}, saving model")
                     if not os.path.exists(model_path):
                         os.makedirs(model_path)
@@ -415,16 +519,19 @@ if __name__ == '__main__':
 
                 # update epoch record
                 epoch = epoch + 1  
-            # if i == 0:
-            #     print("Training is done.")
-            #     break
+            if i == 0:
+                print("Training is done.")
+                break
                 
-
 
 
     # test
     print("Mode:",mode)
-    if mode == "test":
+    if mode == "test":  
+
+        cmap = cls_color
+        if not os.path.exists(des_path):
+            os.makedirs(des_path)
 
         # Load dataset
         dataset = ImageDataset(src_path, tfm=train_tfm, mode=mode)
@@ -439,11 +546,16 @@ if __name__ == '__main__':
                 print("A: VGG16 + FCN32")
                 model = VGG16_FCN32().to(device)
             elif model_option == "B":
-                print("B: Resnet")
-                model = None
+                print("B: VGG16 + FCN8s")
+                model = VGG16_FCN8s().to(device)
+            elif model_option == "C":
+                print("C: Resnet50 + FCN8s")
+                model = Resnet50_FCN8s().to(device)
+
             ckpt_name = f"hw1-2-{model_option}_fold{i}.ckpt"
+            #ckpt_name = f"hw1-2-{model_option}_epoch20_fold{i}.ckpt"
             model.load_state_dict(torch.load( os.path.join(model_path, ckpt_name)))
-            print(f"Checkpoint {ckpt_name} loaded.")
+            print(f"Checkpoint {os.path.join(model_path, ckpt_name)} loaded.")
             model.eval()
             
             with torch.no_grad():
@@ -453,10 +565,33 @@ if __name__ == '__main__':
                     #print("data",data)
                     logits = model(data.to(device))
                     #print("logits",logits.shape)
-                    test_pred[j] = np.argmax(logits.detach().cpu(), axis=1)
-                    j=j+1
+                    # test_pred[j] = np.argmax(logits.detach().cpu(), axis=1)
+                    pred = np.argmax(logits.detach().cpu(), axis=1).reshape(512,512)
                     #print("pred",pred.shape)
 
+                    # get prediction kinds
+                    cs = np.unique(pred)
+                    print(j, cs)
+                    #color_masks = np.zeros((len(cs),512, 512, 3))
+                    result_img = np.zeros((512*512, 3))
+
+                    for k,c in enumerate(cs):
+                        # print( cmap[c] )
+                        mask = np.zeros((512, 512))
+                        ind = np.where(pred==c) # pred.shape: 1,512,512
+                        #print(ind)
+                        mask[ind[0], ind[1]] = 1
+
+                        # img = viz_data(img, mask, color=cmap[c])
+                        l_loc = np.where(mask.flatten() == 1)[0]
+                        #print(l_loc.shape)
+                        result_img[l_loc, : ] = cmap[c]
+                        # result_imgs: 512x512, 3. bg: [0,0,0] fg: cmap[c]
+
+                    result_img = result_img.reshape((512, 512, 3))  
+                    imageio.imsave(os.path.join(des_path, "{:04d}_mask.png".format(j)), np.uint8(result_img))
+                    j=j+1
+                    
             if i == 0:
                 print("Testing is done. (one fold)")
                 break            
@@ -464,12 +599,12 @@ if __name__ == '__main__':
         # Convert prediction(1,512,512) to RGB image(512,512,3)
         #test_pred_imgs = np.empty((num_tests, 512, 512, 3))
         #pred_imgs = np.empty((512, 512, 3))
-        if not os.path.exists(des_path):
-            os.makedirs(des_path)
 
-        cmap = cls_color
+
+        """
         i=0
-        for pred in test_pred:
+        print("Generating images...")
+        for pred in tqdm(test_pred):
             # get prediction kinds
             cs = np.unique(pred)
             img = np.zeros((512, 512, 3))
@@ -477,7 +612,7 @@ if __name__ == '__main__':
             #print(i, cs)
             color_masks = np.zeros((len(cs),512, 512, 3))
             for k,c in enumerate(cs):
-                print( cmap[c] )
+                # print( cmap[c] )
                 mask = np.zeros((512, 512))
                 ind = np.where(pred==c)
                 mask[ind[0], ind[1]] = 1
@@ -497,9 +632,11 @@ if __name__ == '__main__':
             for color_mask in color_masks:
                 img = img + color_mask ##?
 
-            imageio.imsave(os.path.join(des_path, f"{i}_mask_pred.png"), np.uint8(img))
+            imageio.imsave(os.path.join(des_path, "{:04d}_mask.png".format(i)), np.uint8(img))
+            #print( "{:04d}_mask.png".format(i))
             i = i+1
-
+        print(f"Images are generated at {des_path}")
+        """
         # ensembling    
         # prediction_final = []
         # for i in range(n_split):

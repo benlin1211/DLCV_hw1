@@ -233,7 +233,7 @@ class Resnet(nn.Module):
 
         self.classifier = nn.Sequential(
             nn.Linear(1000, 50),
-            #nn.ReLU(),ßßß
+            #nn.ReLU(),
             #nn.Linear(1000, 50),
         )
         

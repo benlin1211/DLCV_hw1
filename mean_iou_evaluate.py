@@ -15,8 +15,9 @@ def read_masks(filepath):
     masks = np.empty((n_masks, 512, 512))
     print(masks.shape)
     
-    pbar = tqdm(enumerate(file_list))
-    for i, file in pbar:
+    i=0
+    pbar = tqdm(file_list)
+    for file in pbar:
         pbar.set_description(f"{i}th filename: {file}")
         mask = imageio.imread(os.path.join(filepath, file))
         mask = (mask >= 128).astype(int)
@@ -29,6 +30,7 @@ def read_masks(filepath):
         masks[i, mask == 1] = 4  # (Blue: 001) Water 
         masks[i, mask == 7] = 5  # (White: 111) Barren land 
         masks[i, mask == 0] = 6  # (Black: 000) Unknown 
+        i=i+1
 
     return masks
 
@@ -60,8 +62,9 @@ if __name__ == '__main__':
     parser.add_argument('-p', '--pred', help='prediction masks directory', type=str)
     args = parser.parse_args()
 
-    pred = read_masks(args.pred) #2000, 512, 512
-    labels = read_masks(args.labels) #2000, 512, 512
+    pred = read_masks(args.pred) #257, 512, 512
+    labels = read_masks(args.labels) #257, 512, 512
     print(pred.shape) 
     print(labels.shape)
+
     mean_iou_score(pred, labels)

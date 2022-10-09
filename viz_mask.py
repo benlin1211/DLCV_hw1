@@ -96,7 +96,6 @@ def arg_parse():
                     help="path to seg")
 
     args = parser.parse_args()
-    #python3 viz_mask.py --img_path "./hw1_data/hw1_data/p2_data/validation/0005_sat.jpg" --seg_path "hw1_data/hw1_data/p2_data/validation/0005_mask.png"
     return args
 
 def read_masks(seg, shape):
@@ -136,3 +135,6 @@ if __name__ == '__main__':
         mask[ind[0], ind[1]] = 1
         img = viz_data(img, mask, color=cmap[c])
         imageio.imsave('./exp.png', np.uint8(img))
+
+    #python3 viz_mask.py --img_path "./hw1_data/hw1_data/p2_data/validation/0005_sat.jpg" --seg_path "hw1_data/hw1_data/p2_data/validation/0005_mask.png"
+    
