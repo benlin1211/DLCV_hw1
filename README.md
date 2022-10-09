@@ -44,16 +44,19 @@ https://machinelearningmastery.com/command-line-arguments-for-your-python-script
     bash ./train_hw1-1.sh ./hw1_data/hw1_data/p1_data/train_50 .
     bash ./train_hw1-2.sh ./hw1_data/hw1_data/p2_data/train .
     
-### Run Inference Code (1-1/1-2A/1-2B)
+### Run Inference Code 
 
     bash ./hw1_1.sh ./hw1_data/hw1_data/p1_data/val_50 result_1-1 
+    
+#### 1-2A 
+
     bash ./hw1_2.sh ./hw1_data/hw1_data/p2_data/validation result_1-2
 
-### 1-2B-1
+#### 1-2B-1
 
     bash ./hw1_2.sh ./hw1_data/hw1_data/p2_data/validation result_1-2B
     
-### 1-2B-2
+#### 1-2B-2
 
     bash ./hw1_2.sh ./hw1_data/hw1_data/p2_data/validation result_1-2B_no_weight
     
@@ -61,7 +64,9 @@ https://machinelearningmastery.com/command-line-arguments-for-your-python-script
 
     bash ./eval_1-1.sh "./val_A.csv" "./hw1_data/hw1_data/p1_data/val_gt.csv"
     bash ./eval_1-1.sh "./val_B.csv" "./hw1_data/hw1_data/p1_data/val_gt.csv"
-    bash ./eval_1-2.sh 
+    bash ./eval_1-2.sh "./result_1-2" "./hw1_data/hw1_data/p2_data/validation"
+    bash ./eval_1-2.sh "./result_1-2B" "./hw1_data/hw1_data/p2_data/validation"
+    bash ./eval_1-2.sh "./result_1-2B_no_weight" "./hw1_data/hw1_data/p2_data/validation"
 
 # Q&A
 If you have any problems related to HW1, you may
