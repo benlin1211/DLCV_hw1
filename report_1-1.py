@@ -10,10 +10,13 @@ from torch.utils.data import ConcatDataset, DataLoader, Subset, Dataset
 import random
 from tqdm import tqdm
 from sklearn.model_selection import KFold
+from sklearn.decomposition import PCA
 import pandas as pd
 from PIL import Image
 
 from collections import Counter
+import matplotlib.pyplot as plt
+
 
 
 def fix_random_seed():
@@ -211,38 +214,16 @@ class CNN(nn.Module):
         out = self.cnn5(out)
         # print(out.shape) 
         out = out.view(out.size()[0], -1)
-        return self.fc(out)
 
-
-# Model B
-class Resnet(nn.Module): 
-    def __init__(self, num_freeze_layer=0):
-        super(Resnet, self).__init__()
-        #self.feather_extractor = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
-        self.feather_extractor = resnet50(weights=ResNet50_Weights.IMAGENET1K_V2)
+        for idx, layer in enumerate(self.fc.children()):
+            # print(idx, layer)
+            out = layer(out)
+            if idx == 2:
+                second_last = out
+            
+    
+        return out, second_last
         
-        # Freeze top layers (if needed)
-        for i,child in enumerate(self.feather_extractor.children()):
-            if i < num_freeze_layer:
-                for param in child.parameters():
-                    param.requires_grad = False
-                #print(i, "(freezed):", child)
-            else:
-                pass
-                #print(i, ":", child)
-
-        self.classifier = nn.Sequential(
-            nn.Linear(1000, 50),
-            #nn.ReLU(),
-            #nn.Linear(1000, 50),
-        )
-        
-
-    def forward(self, x):
-        out = self.feather_extractor(x)
-        out = self.classifier(out)
-        return out
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="hw 1-1 train",
@@ -294,91 +275,7 @@ if __name__ == '__main__':
         transforms.ToTensor(),
     ])
    
-    # train
-    if mode == "train":
 
-        # Load dataset
-        dataset = ImageDataset(src_path, tfm=train_tfm, mode=mode)
-        kfold = KFold(n_splits=n_split, shuffle=True)
-        print(len(dataset))
-
-        # loss
-        criterion = nn.CrossEntropyLoss()
-        
-        for i, (train_ids, val_ids) in enumerate(kfold.split(dataset)):
-
-            train_set = Subset(dataset, train_ids)
-            valid_set = Subset(dataset, val_ids)
-            train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
-            valid_loader = DataLoader(valid_set, batch_size=batch_size, shuffle=True)
-            # model
-            if model_option == "A":
-                print("A: CNN")
-                model = CNN().to(device)
-            elif model_option == "B":
-                print("B: Resnet")
-                model = Resnet().to(device)
-            print(model)
-
-            # optimizer
-            optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
-
-            # scheduler
-            scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=lr_decay_step, gamma=lr_decay_ratio)    
-
-            stale = 0 # count for patiency
-            best_acc = 0
-            # Training loop
-
-            for epoch in range(n_epochs):
-                
-                print("Fold:",i)
-                print('Epoch-{0} lr: {1}'.format(epoch, optimizer.param_groups[0]['lr']))
-                
-                # ---------- Training ----------
-                train_loss, train_acc = train(model, criterion, optimizer, train_loader, device, lamb=l2_lamb)
-                print(f"[ Train | {epoch + 1:03d}/{n_epochs:03d} ] loss = {train_loss:.5f}, acc = {train_acc:.5f}")
-                scheduler.step()
-                    
-                # ---------- Validation ----------
-                valid_loss, valid_acc = validate(model, criterion, valid_loader, device, lamb=l2_lamb)
-                print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f}")
-
-                # update logs
-                if valid_acc > best_acc:
-                    print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f} -> best")
-                else:
-                    print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f}")
-
-                # save models
-                if epoch==0 or epoch==3 or epoch==5 or epoch==10:
-                    print(f"Saving stage model")
-                    if not os.path.exists("ckpt"):
-                        os.makedirs("ckpt")
-                    torch.save(model.state_dict(), f"./ckpt/hw1-1-{model_option}_epoch{epoch}_fold{i}.ckpt") 
-
-                if valid_acc > best_acc:
-                    print(f"Best model found at epoch {epoch}, saving model")
-                    if not os.path.exists("ckpt"):
-                        os.makedirs("ckpt")
-                    torch.save(model.state_dict(), f"./ckpt/hw1-1-{model_option}_fold{i}.ckpt") 
-                    best_acc = valid_acc
-                    stale = 0
-                else:
-                    stale += 1
-                    print(f"No improvment {stale}")
-                    if stale > patience:
-                        print(f"No improvment {patience} consecutive epochs, early stopping")
-                        break
-
-                # update epoch record
-                epoch = epoch + 1  
-
-            if i == 0:
-                print("Training is done.")
-                break
-
-    # test
     print("Mode:",mode)
     if mode == "test":
 
@@ -388,65 +285,72 @@ if __name__ == '__main__':
         print(num_tests)
 
         test_dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
-        predictions = [ [] for _ in range(n_split) ]
 
         # get filenames
         filename_list = []
         for _, filename in tqdm(test_dataloader):
             filename_list += filename
+        # initlialize feature and lable
+
+        predictions = []
+        feature = []
 
         for i in range(n_split):
             print(f"fold {i}:")
             if model_option == "A":
                 print("A: CNN")
                 model = CNN().to(device)
-            elif model_option == "B":
-                print("B: Resnet")
-                model = Resnet().to(device)
+            else:
+                model = None
 
+            print(f"./ckpt/hw1-1-{model_option}_fold{i}.ckpt")
             model.load_state_dict(torch.load(f"./ckpt/hw1-1-{model_option}_fold{i}.ckpt"))
             model.eval()
             
             with torch.no_grad():
                 j=0
                 for data, _ in tqdm(test_dataloader):
-                    test_pred = model(data.to(device))
-                    test_label = np.argmax(test_pred.cpu().data.numpy(), axis=1)
-                    predictions[i] += test_label.squeeze().tolist()
-                    # j=j+1
-                    # if j>2:
-                    #     break
+                    test_pred, second_last = model(data.to(device))
+                    #print(test_pred.shape)
+                    #print(second_last.shape)
+                    test_pred = test_pred.cpu()
+                    second_last = second_last.cpu()
+                    test_label = np.argmax(test_pred.data.numpy(), axis=1)
+                    for l in test_label:
+                        predictions.append(l)
+                    for f in second_last:
+                        feature.append(f)
+                    j+1
 
-        # ensembling    
-        prediction_final = []
-        for i in range(n_split):
-            print(len( predictions[i]))
-        for j in range(num_tests):
-            vote_box = []
-            for i in range(n_split):
-                #print(predictions[i][j])
-                vote_box.append(predictions[i][j])
-            counts = Counter(vote_box)
-            # get the frequency of the most.
-            max_count = counts.most_common(1)[0][1] 
-            # get the result that equals to that frequency.
-            out = [value for value, count in counts.most_common() if count == max_count]
-            # draw:
-            if len(out)>1: 
-                # flip to decide...
-                out = [random.choice(out)]
-            # turn list into single value
-            # print(f"==={j}=== out:",out)
-            out = out[0]
-            prediction_final.append(out)
-        #print(prediction_final)
+            #print("predictions",len(predictions))
+            #print("feature",len(feature))
+            #print(feature)
+            predictions = torch.tensor(predictions)
+            feature = torch.stack(feature, dim=0)
+            
+            print(predictions.shape)
+            print(feature.shape)
 
-        # write_result
-        df = pd.DataFrame() # apply pd.DataFrame format 
-        df["filename"] = [x.split('/')[-1] for x in filename_list]
-        df["label"] = prediction_final
-        if not os.path.exists(des_path):
-            os.makedirs(des_path)
-        df.to_csv(os.path.join(des_path, f"val_{model_option}.csv"),index = False)
+            # DO PCA
+            # https://blog.csdn.net/u012162613/article/details/42192293
+            pca = PCA(n_components=2)
+            new_feature = pca.fit_transform(feature)
+            print(new_feature.shape)
+            
+            print(new_feature[:,0].shape)
+            print(new_feature[:,1].shape)
+
+            # visualization
+            plt.figure()
+            plt.scatter(new_feature[:,0], new_feature[:,1], c=predictions, s=3)
+            print("PCA result: PCA.png")
+            plt.savefig('PCA.png')
+            # https://machinelearningmastery.com/principal-component-analysis-for-visualization/
+            # https://chartio.com/resources/tutorials/how-to-save-a-plot-to-a-file-using-matplotlib/
+
+            if i == 0:    
+                print("Done")
+                break
+
 
 

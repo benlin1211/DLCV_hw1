@@ -14,5 +14,5 @@
 # python3 train_1-2.py ${1} ${2} --mode="test" --model_option="B" --batch_size=1  --checkpth="ckpt_1-2B-2" 
 
 # C
-python3 train_1-2.py ${1} ${2} --mode="test" --model_option="C" --batch_size=1  --checkpth="ckpt_1-2C" 
-
+#python3 train_1-2.py ${1} ${2} --mode="test" --model_option="C" --batch_size=1  --checkpth="ckpt_1-2C" 
+python3 train_1-2.py ${1} ${2} --mode="test" --model_option="C" --batch_size=1  --checkpth="ckpt_1-2-deeplab"  

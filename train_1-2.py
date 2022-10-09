@@ -8,6 +8,7 @@ import torchvision.transforms as transforms
 import torch.nn.functional as F
 from torchvision.models import vgg16, VGG16_Weights
 from torchvision.models import resnet50, ResNet50_Weights
+from torchvision.models.segmentation import deeplabv3_resnet50, DeepLabV3_ResNet50_Weights
 
 from torch.utils.data import ConcatDataset, DataLoader, Subset, Dataset
 import random
@@ -115,7 +116,7 @@ def l2_regularizer(model):
     return sum(p.pow(2).sum() for p in model.parameters())
 
 
-def train(model, criterion, optimizer, train_loader, batch_size, device, lamb = 0.001):
+def train(model, criterion, optimizer, train_loader, batch_size, device, lamb, model_option):
     # Make sure the model is in train mode before training
     model.train()
     
@@ -135,6 +136,7 @@ def train(model, criterion, optimizer, train_loader, batch_size, device, lamb = 
 
         # Forward the data. (Make sure data and model are on the same device.)
         logits = model(imgs.to(device))
+        #print(logits)
         #print("logits",logits.shape) #torch.Size([1, 7, 512, 512])
     
         # Calculate the cross-entropy loss.
@@ -169,7 +171,7 @@ def train(model, criterion, optimizer, train_loader, batch_size, device, lamb = 
     return train_loss, train_mIoU
 
     
-def validate(model, criterion, valid_loader, batch_size, device, lamb):
+def validate(model, criterion, valid_loader, batch_size, device, lamb, model_option):
     # Make sure the model is in eval mode so that some modules like dropout are disabled and work normally.
     model.eval()
     
@@ -326,8 +328,22 @@ class VGG16_FCN8s(nn.Module):
 
         return score  # size=(N, n_class, x.H/1, x.W/1)
 
-
 # Model C
+# https://medium.com/image-processing-and-ml-note/deeplabv3-atrous-convolution-semantic-segmentation-e8cbc111c792
+class DeepLabV3_Resnet50(nn.Module): 
+    def __init__(self):
+        super(DeepLabV3_Resnet50, self).__init__()
+        self.model = deeplabv3_resnet50(weight=DeepLabV3_ResNet50_Weights)
+        self.model.classifier[4] = nn.Conv2d(256, 7, kernel_size=1, stride=1)
+
+
+    def forward(self, x):
+        score = self.model(x)['out']
+        #print("score",score.shape)
+
+
+        return score
+"""
 class Resnet50_FCN8s(nn.Module): 
     def __init__(self, num_freeze_layer=0):
         super(Resnet50_FCN8s, self).__init__()
@@ -392,7 +408,7 @@ class Resnet50_FCN8s(nn.Module):
         #print("classifier", score.shape)
 
         return score  # size=(N, n_class, x.H/1, x.W/1)
-
+"""
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="hw 1-1 train",
@@ -469,8 +485,19 @@ if __name__ == '__main__':
                 print("B: VGG16 + FCN8s")
                 model = VGG16_FCN8s().to(device)
             elif model_option == "C":
-                print("C: Resnet50 + FCN8s")
-                model = Resnet50_FCN8s().to(device)
+                #print("C: Resnet50 + FCN8s")
+                #model = Resnet50_FCN8s().to(device)
+                print("C: DeepLabV3 + Resnet50")
+                model = DeepLabV3_Resnet50().to(device)
+                #model = deeplabv3_resnet50(weight=DeepLabV3_ResNet50_Weights).to(device)
+                #print(model)
+                #model.classifier._module['4'] = nn.Conv2d(512, 7, kernel_size=1, stride=1)
+                #model.aux_classifier._module['4'] = nn.Conv2d(256, 7, kernel_size=1, stride=1)
+
+                #print(model.classifier)
+                #print(model.classifier._module['4'])
+                #print(model.aux_classifier) 
+                #print(model.aux_classifier._module['4'])
             print(model)
 
             # optimizer
@@ -487,13 +514,13 @@ if __name__ == '__main__':
                 print('Epoch-{0} lr: {1}'.format(epoch, optimizer.param_groups[0]['lr']))
                 
                 # ---------- Training ----------
-                train_loss, train_mIoU = train(model, criterion, optimizer, train_loader, batch_size, device, lamb=l2_lamb)
+                train_loss, train_mIoU = train(model, criterion, optimizer, train_loader, batch_size, device, l2_lamb, model_option)
                 print(f"[ Train | {epoch + 1:03d}/{n_epochs:03d} ] loss = {train_loss:.5f}")
                 scheduler.step()
                     
                 # ---------- Validation ----------
                 print("Start validation.")
-                valid_loss, valid_mIoU = validate(model, criterion, valid_loader, batch_size, device, lamb=l2_lamb)
+                valid_loss, valid_mIoU = validate(model, criterion, valid_loader, batch_size, device, l2_lamb, model_option)
                 print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}")
 
                 # update logs
@@ -519,9 +546,9 @@ if __name__ == '__main__':
 
                 # update epoch record
                 epoch = epoch + 1  
-            if i == 0:
-                print("Training is done.")
-                break
+            # if i == 0:
+            #     print("Training is done.")
+            #     break
                 
 
 
@@ -549,15 +576,18 @@ if __name__ == '__main__':
                 print("B: VGG16 + FCN8s")
                 model = VGG16_FCN8s().to(device)
             elif model_option == "C":
-                print("C: Resnet50 + FCN8s")
-                model = Resnet50_FCN8s().to(device)
+                #print("C: Resnet50 + FCN8s")
+                #model = Resnet50_FCN8s().to(device)
+                print("C: DeepLabV3 + Resnet50")
+                model = DeepLabV3_Resnet50().to(device)
 
             ckpt_name = f"hw1-2-{model_option}_fold{i}.ckpt"
-            #ckpt_name = f"hw1-2-{model_option}_epoch20_fold{i}.ckpt"
+            #ckpt_name = f"hw1-2-{model_option}_epoch0_fold{i}.ckpt"
+            print(f"Loading checkpoint {os.path.join(model_path, ckpt_name)}.")
             model.load_state_dict(torch.load( os.path.join(model_path, ckpt_name)))
-            print(f"Checkpoint {os.path.join(model_path, ckpt_name)} loaded.")
-            model.eval()
             
+            model.eval()
+            print("Predicting...")
             with torch.no_grad():
                 j=0
                 pbar = tqdm(test_dataloader)
@@ -571,7 +601,7 @@ if __name__ == '__main__':
 
                     # get prediction kinds
                     cs = np.unique(pred)
-                    print(j, cs)
+                    #print(j, cs)
                     #color_masks = np.zeros((len(cs),512, 512, 3))
                     result_img = np.zeros((512*512, 3))
 
@@ -585,7 +615,14 @@ if __name__ == '__main__':
                         # img = viz_data(img, mask, color=cmap[c])
                         l_loc = np.where(mask.flatten() == 1)[0]
                         #print(l_loc.shape)
-                        result_img[l_loc, : ] = cmap[c]
+
+                        # Unknown: 先猜農地
+                        if cmap[c] == [0, 0, 0]: 
+                            #print(f"Unknown detected at img {j}.")
+                            #print(len(l_loc))
+                            result_img[l_loc, : ] = [255, 255, 0]
+                        else:
+                            result_img[l_loc, : ] = cmap[c]
                         # result_imgs: 512x512, 3. bg: [0,0,0] fg: cmap[c]
 
                     result_img = result_img.reshape((512, 512, 3))  
