@@ -94,6 +94,8 @@ def arg_parse():
                     help="path to RGB image")
     parser.add_argument('--seg_path', type=str, default='', 
                     help="path to seg")
+    parser.add_argument('--save_as', type=str, default='exp.png', 
+                    help="save as ...")
 
     args = parser.parse_args()
     return args
@@ -119,6 +121,7 @@ if __name__ == '__main__':
 
     img_path = args.img_path
     seg_path = args.seg_path
+    save_as = args.save_as
 
     img = imageio.imread(img_path)
     seg = imageio.imread(seg_path)
@@ -134,7 +137,7 @@ if __name__ == '__main__':
         ind = np.where(masks==c)
         mask[ind[0], ind[1]] = 1
         img = viz_data(img, mask, color=cmap[c])
-        imageio.imsave('./exp.png', np.uint8(img))
+        imageio.imsave(f'./{save_as}', np.uint8(img))
 
     #python3 viz_mask.py --img_path "./hw1_data/hw1_data/p2_data/validation/0005_sat.jpg" --seg_path "hw1_data/hw1_data/p2_data/validation/0005_mask.png"
     

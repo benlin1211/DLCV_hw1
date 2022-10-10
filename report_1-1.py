@@ -1,23 +1,21 @@
-import os
 import argparse
+import os
+import random
+from collections import Counter
+
+import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
-from torchvision.models import resnet50, ResNet50_Weights
-
-from torch.utils.data import ConcatDataset, DataLoader, Subset, Dataset
-import random
-from tqdm import tqdm
-from sklearn.model_selection import KFold
-from sklearn.decomposition import PCA
-from sklearn.manifold import TSNE 
-import pandas as pd
 from PIL import Image
-
-from collections import Counter
-import matplotlib.pyplot as plt
-
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
+from sklearn.model_selection import KFold
+from torch.utils.data import ConcatDataset, DataLoader, Dataset, Subset
+from torchvision.models import ResNet50_Weights, resnet50
+from tqdm import tqdm
 
 
 def fix_random_seed():
@@ -224,7 +222,36 @@ class CNN(nn.Module):
             
     
         return out, second_last
+
+# Model B
+class Resnet(nn.Module): 
+    def __init__(self, num_freeze_layer=0):
+        super(Resnet, self).__init__()
+        #self.feather_extractor = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
+        self.feather_extractor = resnet50(weights=ResNet50_Weights.IMAGENET1K_V2)
         
+        # Freeze top layers (if needed)
+        for i,child in enumerate(self.feather_extractor.children()):
+            if i < num_freeze_layer:
+                for param in child.parameters():
+                    param.requires_grad = False
+                #print(i, "(freezed):", child)
+            else:
+                pass
+                #print(i, ":", child)
+
+        self.classifier = nn.Sequential(
+            nn.Linear(1000, 50),
+            #nn.ReLU(),
+            #nn.Linear(1000, 50),
+        )
+        
+
+    def forward(self, x):
+        second_last = self.feather_extractor(x)
+        out = self.classifier(second_last)
+        return out, second_last
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="hw 1-1 train",
@@ -302,10 +329,12 @@ if __name__ == '__main__':
                 print("A: CNN")
                 model = CNN().to(device)
             else:
-                model = None
+                model = Resnet().to(device)
 
             print(f"./ckpt/hw1-1-{model_option}_fold{i}.ckpt")
             model.load_state_dict(torch.load(f"./ckpt/hw1-1-{model_option}_fold{i}.ckpt"))
+            # print(f"./ckpt/hw1-1-{model_option}_epoch4_fold{i}.ckpt")
+            # model.load_state_dict(torch.load(f"./ckpt/hw1-1-{model_option}_epoch4_fold{i}.ckpt"))
             model.eval()
             
             with torch.no_grad():

@@ -6,6 +6,9 @@ import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
 import torch.nn.functional as F
+# https://chih-sheng-huang821.medium.com/%E6%A9%9F%E5%99%A8-%E6%B7%B1%E5%BA%A6%E5%AD%B8%E7%BF%92-%E6%90%8D%E5%A4%B1%E5%87%BD%E6%95%B8-loss-function-huber-loss%E5%92%8C-focal-loss-bb757494f85e
+# from torchvision.ops.focal_loss import sigmoid_focal_loss as FocalLoss
+
 from torch.autograd import Variable
 from torchvision.models import vgg16, VGG16_Weights
 from torchvision.models import resnet50, ResNet50_Weights
@@ -20,6 +23,8 @@ from PIL import Image
 from collections import Counter
 
 from mean_iou_evaluate import mean_iou_score
+# https://github.com/AdeelH/pytorch-multi-class-focal-loss/blob/master/focal_loss.py
+from focal_loss import focal_loss as FocalLoss
 from viz_mask import viz_data
 import imageio
 
@@ -117,25 +122,42 @@ class ImageDataset(Dataset):
 def l2_regularizer(model):
     return sum(p.pow(2).sum() for p in model.parameters())
 
+"""
+# https://amaarora.github.io/2020/06/29/FocalLoss.html
+class WeightedFocalLoss(nn.Module):
+    "Non weighted version of Focal Loss"
+    def __init__(self, alpha=.25, gamma=2):
+        super(WeightedFocalLoss, self).__init__()
+        self.alpha = torch.tensor([alpha, 1-alpha]).cuda()
+        self.gamma = gamma
 
+    def forward(self, inputs, targets):
+        BCE_loss = F.binary_cross_entropy_with_logits(inputs, targets, reduction='none')
+        targets = targets.type(torch.long)
+        at = self.alpha.gather(0, targets.data.view(-1))
+        pt = torch.exp(-BCE_loss)
+        F_loss = at*(1-pt)**self.gamma * BCE_loss
+        return F_loss.mean()
+
+# https://chih-sheng-huang821.medium.com/%E6%A9%9F%E5%99%A8-%E6%B7%B1%E5%BA%A6%E5%AD%B8%E7%BF%92-%E6%90%8D%E5%A4%B1%E5%87%BD%E6%95%B8-loss-function-huber-loss%E5%92%8C-focal-loss-bb757494f85e
 class FocalLoss(nn.Module):
-    r"""
+    
         # https://zhuanlan.zhihu.com/p/28527749
-        This criterion is a implemenation of Focal Loss, which is proposed in 
-        Focal Loss for Dense Object Detection.
+        # This criterion is a implemenation of Focal Loss, which is proposed in 
+        # Focal Loss for Dense Object Detection.
 
-            Loss(x, class) = - \alpha (1-softmax(x)[class])^gamma \log(softmax(x)[class])
+        #     Loss(x, class) = - \alpha (1-softmax(x)[class])^gamma \log(softmax(x)[class])
 
-        The losses are averaged across observations for each minibatch.
+        # The losses are averaged across observations for each minibatch.
 
-        Args:
-            alpha(1D Tensor, Variable) : the scalar factor for this criterion
-            gamma(float, double) : gamma > 0; reduces the relative loss for well-classiﬁed examples (p > .5), 
-                                   putting more focus on hard, misclassiﬁed examples
-            size_average(bool): By default, the losses are averaged over observations for each minibatch.
-                                However, if the field size_average is set to False, the losses are
-                                instead summed for each minibatch.
-    """
+        # Args:
+        #     alpha(1D Tensor, Variable) : the scalar factor for this criterion
+        #     gamma(float, double) : gamma > 0; reduces the relative loss for well-classiﬁed examples (p > .5), 
+        #                            putting more focus on hard, misclassiﬁed examples
+        #     size_average(bool): By default, the losses are averaged over observations for each minibatch.
+        #                         However, if the field size_average is set to False, the losses are
+        #                         instead summed for each minibatch.
+    
     def __init__(self, class_num, alpha=None, gamma=2, size_average=True):
         super(FocalLoss, self).__init__()
         if alpha is None:
@@ -175,25 +197,23 @@ class FocalLoss(nn.Module):
         #print('-----bacth_loss------')
         #print(batch_loss)
 
-
         if self.size_average:
             loss = batch_loss.mean()
         else:
             loss = batch_loss.sum()
         return loss
-def train(model, criterion, optimizer, train_loader, batch_size, device, lamb, model_option):
+"""
+
+def train(model, criterion, criterion2, optimizer, train_loader, batch_size, device, lamb, model_option):
     # Make sure the model is in train mode before training
     model.train()
     
     # These are used to record information in training.
     train_loss = []
-    train_pred = np.empty((len(train_loader)*batch_size, 512, 512))
-    train_labels = np.empty((len(train_loader)*batch_size, 512, 512))
 
     pbar = tqdm(train_loader)
     i = 0
     for batch in pbar:
-
         # A batch consists of image data and corresponding labels.
         imgs, labels = batch
         #print("imgs",imgs.shape) #torch.Size([1, 1, 512, 512])
@@ -206,7 +226,14 @@ def train(model, criterion, optimizer, train_loader, batch_size, device, lamb, m
     
         # Calculate the cross-entropy loss.
         # We don't need to apply softmax before computing cross-entropy as it is done automatically.
-        loss = criterion(logits.reshape(batch_size, 7, -1), labels.reshape(batch_size, -1).to(device)) + lamb * l2_regularizer(model)
+        loss = criterion(logits.reshape(batch_size, 7, -1), labels.reshape(batch_size, -1).to(device)) \
+            + lamb * l2_regularizer(model)
+        # loss = criterion(logits.reshape(batch_size, 7, -1), labels.reshape(batch_size, -1).to(device)) \
+        #     +  criterion2(logits.reshape(batch_size, 7, -1), labels.reshape(batch_size, -1).to(device)) \
+        #     + lamb * l2_regularizer(model)
+        # loss = 0.5*criterion(logits.reshape(batch_size, 7, -1), labels.reshape(batch_size, -1).to(device)) \
+        #     + 0.5*FocalLoss(logits.reshape(batch_size, 7, -1), labels.reshape(batch_size, -1).to(device)) \
+        #     + lamb * l2_regularizer(model)
         # print("single loss:", loss)
 
         # Gradients stored in the parameters in the previous step should be cleared out first.
@@ -223,8 +250,6 @@ def train(model, criterion, optimizer, train_loader, batch_size, device, lamb, m
 
         # Record the loss and accuracy.
         train_loss.append(loss.item())
-
-        i=i+batch_size
         pbar.set_description("Loss %.4lf |" % loss)
 
     # The average loss and accuracy for entire training set is the average of the recorded values.
@@ -236,7 +261,7 @@ def train(model, criterion, optimizer, train_loader, batch_size, device, lamb, m
     return train_loss, train_mIoU
 
     
-def validate(model, criterion, valid_loader, batch_size, device, lamb, model_option):
+def validate(model, criterion, criterion2, valid_loader, batch_size, device, lamb, model_option):
     # Make sure the model is in eval mode so that some modules like dropout are disabled and work normally.
     model.eval()
     
@@ -259,7 +284,14 @@ def validate(model, criterion, valid_loader, batch_size, device, lamb, model_opt
             logits = model(imgs.to(device))
 
         # We can still compute the loss (but not the gradient).
-        loss = criterion(logits.reshape(batch_size, 7, -1), labels.reshape(batch_size, -1).to(device)) + lamb * l2_regularizer(model)
+        loss = criterion(logits.reshape(batch_size, 7, -1), labels.reshape(batch_size, -1).to(device)) \
+            + lamb * l2_regularizer(model)
+        # loss = criterion(logits.reshape(batch_size, 7, -1), labels.reshape(batch_size, -1).to(device)) \
+        #     +  criterion2(logits.reshape(batch_size, 7, -1), labels.reshape(batch_size, -1).to(device)) \
+        #     + lamb * l2_regularizer(model)
+        # loss = 0.5*criterion(logits.reshape(batch_size, 7, -1), labels.reshape(batch_size, -1).to(device)) \
+        #     +  0.5*FocalLoss(logits.reshape(batch_size, 7, -1), labels.reshape(batch_size, -1).to(device)) \
+        #     + lamb * l2_regularizer(model)        
         
         # Record the loss and accuracy.
         valid_loss.append(loss.item())
@@ -408,72 +440,7 @@ class DeepLabV3_Resnet50(nn.Module):
 
 
         return score
-"""
-class Resnet50_FCN8s(nn.Module): 
-    def __init__(self, num_freeze_layer=0):
-        super(Resnet50_FCN8s, self).__init__()
-        #self.feather_extractor = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
-       
-        #self.resnet = nn.Sequential(*list( resnet50(weights=ResNet50_Weights.IMAGENET1K_V2).children())[:-2])
-        self.resnet = nn.Sequential(*list( resnet50(weights=ResNet50_Weights.IMAGENET1K_V2).children())[:-2])
 
-        # Ref: https://github.com/pochih/FCN-pytorch/blob/master/python/fcn.py
-        self.relu    = nn.ReLU(inplace=True)
-        self.deconv1 = nn.ConvTranspose2d(2048, 1024, kernel_size=3, stride=2, padding=1, dilation=1, output_padding=1)
-        self.bn1     = nn.BatchNorm2d(1024)
-        self.deconv2 = nn.ConvTranspose2d(1024, 512, kernel_size=3, stride=2, padding=1, dilation=1, output_padding=1)
-        self.bn2     = nn.BatchNorm2d(512)
-        self.deconv3 = nn.ConvTranspose2d(512, 128, kernel_size=3, stride=2, padding=1, dilation=1, output_padding=1)
-        self.bn3     = nn.BatchNorm2d(128)
-        self.deconv4 = nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1, dilation=1, output_padding=1)
-        self.bn4     = nn.BatchNorm2d(64)
-        self.deconv5 = nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=1, dilation=1, output_padding=1)
-        self.bn5     = nn.BatchNorm2d(32)
-        self.classifier = nn.Conv2d(32, 7, kernel_size=1) # n_classes = 7
-
-        
-    def forward(self, x):
-        #print("input", x.shape)
-        #https://discuss.pytorch.org/t/accessing-intermediate-layers-of-a-pretrained-network-forward/12113
-        for idx, layer in enumerate(self.resnet.children()):
-            #print(idx)
-            x = layer(x)
-            #print(f"idx{idx}", x.shape)
-            if idx == 7: # size=(N, 512, x.H/32, x.W/32)
-                x5 = x  
-                #print("x5", x5.shape)
-            elif idx == 6: # size=(N, 512, x.H/16, x.W/16) #more important
-                x4 = x
-                #print("x4", x4.shape)
-            elif idx == 5: # size=(N, 256, x.H/8,  x.W/8) #most important
-                x3 = x
-                #print("x3", x3.shape)
-
-        #print("resnet", x.shape)
-        score = self.relu(self.deconv1(x5))               # size=(N, 512, x.H/16, x.W/16)
-        #print("deconv1", score.shape)
-        score = self.bn1(score + 1*x4)                      # element-wise add, size=(N, 512, x.H/16, x.W/16)
-        #print("bn1", score.shape)
-
-        score = self.relu(self.deconv2(score))            # size=(N, 256, x.H/8, x.W/8)
-        #print("deconv2", score.shape)
-        score = self.bn2(score + 1*x3)                      # element-wise add, size=(N, 256, x.H/8, x.W/8)
-        #print("bn2", score.shape)
-
-        score = self.bn3(self.relu(self.deconv3(score)))  # size=(N, 128, x.H/4, x.W/4)
-        #print("deconv3", score.shape)
-
-        score = self.bn4(self.relu(self.deconv4(score)))  # size=(N, 64, x.H/2, x.W/2)
-        #print("deconv4", score.shape)
-
-        score = self.bn5(self.relu(self.deconv5(score)))  # size=(N, 32, x.H, x.W)
-        #print("deconv5", score.shape)
-        
-        score = self.classifier(score)                    # size=(N, n_class, x.H/1, x.W/1)
-        #print("classifier", score.shape)
-
-        return score  # size=(N, n_class, x.H/1, x.W/1)
-"""
 
 
 if __name__ == '__main__':
@@ -491,7 +458,8 @@ if __name__ == '__main__':
     parser.add_argument("--scheduler_lr_decay_ratio", help="scheduler learning rate decay ratio ", type=float, default=0.99)
     parser.add_argument("--n_epochs", help="n_epochs", type=int, default=40)
     parser.add_argument("--n_split", help="k-fold split numbers", type=int, default=5)      
-    parser.add_argument("--l2_reg_lambda", help="Lambda value for L2 regularizer", type=float, default=0.0001)   
+    parser.add_argument("--l2_reg_lambda", help="Lambda value for L2 regularizer", type=float, default=0.0001)  
+    parser.add_argument("--resume_n", help="Which epoch to resume", type=int, default=None)   
     args = parser.parse_args()
     print(vars(args))
     
@@ -509,6 +477,7 @@ if __name__ == '__main__':
     n_epochs = args.n_epochs
     n_split = args.n_split
     l2_lamb = args.l2_reg_lambda
+    resume_n = args.resume_n
 
     # fix random seed
     fix_random_seed()
@@ -531,18 +500,25 @@ if __name__ == '__main__':
 
         # Load dataset
         dataset = ImageDataset(src_path, tfm=train_tfm, mode=mode)
-        kfold = KFold(n_splits=n_split, shuffle=True)
+        # kfold = KFold(n_splits=n_split, shuffle=True)
+        train_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
         print(len(dataset))
 
         # loss
         criterion = nn.CrossEntropyLoss()
-        
-        for i, (train_ids, val_ids) in enumerate(kfold.split(dataset)):
+        criterion2 = FocalLoss()
 
-            train_set = Subset(dataset, train_ids)
-            valid_set = Subset(dataset, val_ids)
-            train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
-            valid_loader = DataLoader(valid_set, batch_size=batch_size, shuffle=True)
+        if not os.path.exists(model_path):
+            os.makedirs(model_path)
+        
+        i = 0
+        if True:
+        # for i, (train_ids, val_ids) in enumerate(kfold.split(dataset)):
+
+        #     train_set = Subset(dataset, train_ids)
+        #     valid_set = Subset(dataset, val_ids)
+        #     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
+        #     valid_loader = DataLoader(valid_set, batch_size=batch_size, shuffle=True)
             # model
             if model_option == "A":
                 print("A: VGG16 + FCN32")
@@ -565,10 +541,10 @@ if __name__ == '__main__':
                 #print(model.aux_classifier) 
                 #print(model.aux_classifier._module['4'])
             print(model)
-            if os.path.exists(os.path.join( model_path, f"hw1-2-{model_option}_fold{i}.ckpt") ):
-                prev = os.path.join( model_path, f"hw1-2-{model_option}_fold{i}.ckpt") 
-                print(f"Loading previous checkpoint: { prev }")
-                model.load_state_dict(torch.load(prev))
+            # resume = f"./ckpt_1-2-deeplab_0723/hw1-2-{model_option}_fold{i}.ckpt"
+            # if os.path.exists( resume ):
+            #     print(f"Loading previous checkpoint: { resume }")
+            #     model.load_state_dict(torch.load(resume))
             
             # optimizer
             optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
@@ -584,35 +560,34 @@ if __name__ == '__main__':
                 print('Epoch-{0} lr: {1}'.format(epoch, optimizer.param_groups[0]['lr']))
                 
                 # ---------- Training ----------
-                train_loss, train_mIoU = train(model, criterion, optimizer, train_loader, batch_size, device, l2_lamb, model_option)
+                train_loss, train_mIoU = train(model, criterion, criterion2, optimizer, train_loader, batch_size, device, l2_lamb, model_option)
                 print(f"[ Train | {epoch + 1:03d}/{n_epochs:03d} ] loss = {train_loss:.5f}")
                 scheduler.step()
                     
-                # ---------- Validation ----------
-                print("Start validation.")
-                valid_loss, valid_mIoU = validate(model, criterion, valid_loader, batch_size, device, l2_lamb, model_option)
-                print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}")
+                # # ---------- Validation ----------
+                # print("Start validation.")
+                # valid_loss, valid_mIoU = validate(model, criterion, criterion2, valid_loader, batch_size, device, l2_lamb, model_option)
+                # print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}")
 
-                # update logs
-                if valid_loss < best_loss:
-                    print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f} -> best")
-                else:
-                    print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}")
+                # # update logs
+                # if valid_loss < best_loss:
+                #     print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f} -> best")
+                # else:
+                #     print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}")
 
                 # save models for report
-                if epoch == 0 or  epoch == int(n_epochs/2) or epoch == n_epochs-1:
+                if True:
                     print(f"Saving stage model at {model_path}")
-                    if not os.path.exists(model_path):
-                        os.makedirs(model_path)
                     torch.save(model.state_dict(),  os.path.join( model_path, f"hw1-2-{model_option}_epoch{epoch}_fold{i}.ckpt") ) 
 
-                # save best models    
-                if valid_loss < best_loss:
-                    print(f"Best model found at epoch {epoch}, saving model at {model_path}")
-                    if not os.path.exists(model_path):
-                        os.makedirs(model_path)
+                # # save best models    
+                # if valid_loss < best_loss:
+                #     print(f"Best model found at epoch {epoch}, saving model at {model_path}")
+                
+                if True:
+                    print(f"Saving current model at {model_path}")
                     torch.save(model.state_dict(),  os.path.join( model_path, f"hw1-2-{model_option}_fold{i}.ckpt") ) 
-                    best_loss = valid_loss
+                    # best_loss = valid_loss
 
                 # update epoch record
                 epoch = epoch + 1  
@@ -651,7 +626,10 @@ if __name__ == '__main__':
                 print("C: DeepLabV3 + Resnet50")
                 model = DeepLabV3_Resnet50().to(device)
 
-            ckpt_name = f"hw1-2-{model_option}_fold{i}.ckpt"
+            if resume_n is not None:
+                ckpt_name = f"hw1-2-{model_option}_epoch{resume_n}_fold{i}.ckpt"
+            else:
+                ckpt_name = f"hw1-2-{model_option}_fold{i}.ckpt"
             #ckpt_name = f"hw1-2-{model_option}_epoch0_fold{i}.ckpt"
             print(f"Loading checkpoint {os.path.join(model_path, ckpt_name)}.")
             model.load_state_dict(torch.load( os.path.join(model_path, ckpt_name)))

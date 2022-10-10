@@ -351,7 +351,7 @@ if __name__ == '__main__':
                     print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f}")
 
                 # save models
-                if epoch==0 or epoch==3 or epoch==5 or epoch==10:
+                if True:
                     print(f"Saving stage model")
                     if not os.path.exists("ckpt"):
                         os.makedirs("ckpt")
