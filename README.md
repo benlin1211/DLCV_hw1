@@ -78,6 +78,9 @@ https://machinelearningmastery.com/command-line-arguments-for-your-python-script
 
     bash ./hw1_1_report.sh ./hw1_data/hw1_data/p1_data/val_50 .
 
+### Report 1-2
+
+    bash ./hw1_2_report.sh
 
 # Q&A
 If you have any problems related to HW1, you may
