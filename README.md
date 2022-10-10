@@ -60,7 +60,7 @@ https://machinelearningmastery.com/command-line-arguments-for-your-python-script
 
     bash ./hw1_2.sh ./hw1_data/hw1_data/p2_data/validation result_1-2B-2
     
-#### 1-2C: Resnet_FCN8s
+#### 1-2C: DeepLabV3 + Resnet50
 
     bash ./hw1_2.sh ./hw1_data/hw1_data/p2_data/validation result_1-2C
     
@@ -71,6 +71,13 @@ https://machinelearningmastery.com/command-line-arguments-for-your-python-script
     bash ./eval_1-2.sh "./result_1-2" "./hw1_data/hw1_data/p2_data/validation"
     bash ./eval_1-2.sh "./result_1-2B-1" "./hw1_data/hw1_data/p2_data/validation"
     bash ./eval_1-2.sh "./result_1-2B-2" "./hw1_data/hw1_data/p2_data/validation"
+    bash ./eval_1-2.sh "./result_1-2C" "./hw1_data/hw1_data/p2_data/validation"
+    
+
+### Report 1-1
+
+    bash ./hw1_1_report.sh ./hw1_data/hw1_data/p1_data/val_50 .
+
 
 # Q&A
 If you have any problems related to HW1, you may
