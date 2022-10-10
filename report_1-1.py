@@ -11,6 +11,7 @@ import random
 from tqdm import tqdm
 from sklearn.model_selection import KFold
 from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE 
 import pandas as pd
 from PIL import Image
 
@@ -333,19 +334,42 @@ if __name__ == '__main__':
 
             # DO PCA
             # https://blog.csdn.net/u012162613/article/details/42192293
+            # https://machinelearningmastery.com/principal-component-analysis-for-visualization/
             pca = PCA(n_components=2)
-            new_feature = pca.fit_transform(feature)
-            print(new_feature.shape)
+            X_PCA = pca.fit_transform(feature)
+            #Data Visualization
+            x_min, x_max = X_PCA.min(0), X_PCA.max(0)
+            X_norm = (X_PCA - x_min) / (x_max - x_min)  #Normalize
             
-            print(new_feature[:,0].shape)
-            print(new_feature[:,1].shape)
+            print(X_norm.shape)
+            
+            print(X_norm[:,0].shape)
+            print(X_norm[:,1].shape)
 
             # visualization
             plt.figure()
-            plt.scatter(new_feature[:,0], new_feature[:,1], c=predictions, s=3)
+            plt.scatter(X_norm[:,0], X_norm[:,1], c=predictions, s=5)
             print("PCA result: PCA.png")
             plt.savefig('PCA.png')
-            # https://machinelearningmastery.com/principal-component-analysis-for-visualization/
+
+            # Do t-SNE 
+            # https://mortis.tech/2019/11/program_note/664/
+            X_tsne = TSNE(n_components=2, init='random', random_state=5, verbose=1).fit_transform(feature)
+
+            #Data Visualization
+            x_min, x_max = X_tsne.min(0), X_tsne.max(0)
+            X_norm = (X_tsne - x_min) / (x_max - x_min)  #Normalize
+            # print(X_norm.shape)
+            # plt.figure(figsize=(8, 8))
+            # for i in range(X_norm.shape[0]):
+            #     plt.text(X_norm[i, 0], X_norm[i, 1], str(predictions[i]), color=plt.cm.Set1(predictions[i]), 
+            #             fontdict={'weight': 'bold', 'size': 9})
+            plt.scatter(X_norm[:,0], X_norm[:,1], c=predictions, s=5)
+            #plt.xticks([])
+            #plt.yticks([])
+            plt.savefig('t-SNE.png')
+            
+            
             # https://chartio.com/resources/tutorials/how-to-save-a-plot-to-a-file-using-matplotlib/
 
             if i == 0:    
