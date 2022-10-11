@@ -39,6 +39,10 @@ Note that using packages with different versions will very likely lead to compat
 ### Argparse
 https://machinelearningmastery.com/command-line-arguments-for-your-python-script/
 
+### Get model
+
+    bash ./hw1_download.sh 
+
 ### Run Training Code
 
     bash ./train_hw1-1.sh ./hw1_data/hw1_data/p1_data/train_50 .
@@ -47,32 +51,16 @@ https://machinelearningmastery.com/command-line-arguments-for-your-python-script
 ### Run Inference Code 
 #### 1-1
 
-    bash ./hw1_1.sh ./hw1_data/hw1_data/p1_data/val_50 result_1-1 
+    bash ./hw1_1.sh ./hw1_data/hw1_data/p1_data/val_50 output/pred.csv
     
-#### 1-2A 
+#### 1-2
 
-    bash ./hw1_2.sh ./hw1_data/hw1_data/p2_data/validation result_1-2
-
-#### 1-2B-1: x3,x4 with weight
-
-    bash ./hw1_2.sh ./hw1_data/hw1_data/p2_data/validation result_1-2B-1
-    
-#### 1-2B-2: x3,x4 without weight
-
-    bash ./hw1_2.sh ./hw1_data/hw1_data/p2_data/validation result_1-2B-2
-    
-#### 1-2C: DeepLabV3 + Resnet50
-
-    bash ./hw1_2.sh ./hw1_data/hw1_data/p2_data/validation result_1-2C
+    bash ./hw1_2.sh ./hw1_data/hw1_data/p2_data/validation output/pred_dir/
     
 ### Acccuracy
 
-    bash ./eval_1-1.sh "./result_1-1/val_A.csv" "./hw1_data/hw1_data/p1_data/val_gt.csv"
-    bash ./eval_1-1.sh "./result_1-1/val_B.csv" "./hw1_data/hw1_data/p1_data/val_gt.csv"
-    bash ./eval_1-2.sh "./result_1-2" "./hw1_data/hw1_data/p2_data/validation"
-    bash ./eval_1-2.sh "./result_1-2B-1" "./hw1_data/hw1_data/p2_data/validation"
-    bash ./eval_1-2.sh "./result_1-2B-2" "./hw1_data/hw1_data/p2_data/validation"
-    bash ./eval_1-2.sh "./result_1-2C" "./hw1_data/hw1_data/p2_data/validation"
+    bash ./eval_1-1.sh "./output/pred.csv" "./hw1_data/hw1_data/p1_data/val_gt.csv"
+    bash ./eval_1-2.sh "./output/pred_dir/" "./hw1_data/hw1_data/p2_data/validation"
     
 
 ### Report 1-1
