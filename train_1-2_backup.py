@@ -626,37 +626,29 @@ if __name__ == '__main__':
                 #print("C: Resnet50 + FCN8s")
                 #model = Resnet50_FCN8s().to(device)
                 print("C: DeepLabV3 + Resnet50")
-                models = [DeepLabV3_Resnet50().to(device),
-                          DeepLabV3_Resnet50().to(device),
-                          DeepLabV3_Resnet50().to(device),]
+                model = DeepLabV3_Resnet50().to(device)
 
-
-            ckpt_names = [f"hw1-2-{model_option}_fold{i}_1.ckpt",
-                          f"hw1-2-{model_option}_fold{i}_2.ckpt",
-                          f"hw1-2-{model_option}_fold{i}_3.ckpt",]
-
-            for j,ckpt_name in enumerate(ckpt_names):
-
-                print(f"Loading checkpoint {os.path.join(model_path, ckpt_name)}.")
-                models[j].load_state_dict(torch.load( os.path.join(model_path, ckpt_name)))
-                models[j].eval()
-
-
+            if resume_n is not None:
+                ckpt_name = f"hw1-2-{model_option}_epoch{resume_n}_fold{i}.ckpt"
+            else:
+                ckpt_name = f"hw1-2-{model_option}_fold{i}.ckpt"
+            #ckpt_name = f"hw1-2-{model_option}_epoch0_fold{i}.ckpt"
+            print(f"Loading checkpoint {os.path.join(model_path, ckpt_name)}.")
+            model.load_state_dict(torch.load( os.path.join(model_path, ckpt_name)))
+            
+            model.eval()
             print("Predicting...")
             with torch.no_grad():
                 j=0
                 pbar = tqdm(test_dataloader)
                 for data in pbar:
                     #print("data",data)
-                    total_logits = 0
-                    for model in models:
-                        logits = model(data.to(device))
-                        total_logits += logits
-                        #print("logits",logits.shape)
-                        # test_pred[j] = np.argmax(logits.detach().cpu(), axis=1)
+                    logits = model(data.to(device))
+                    #print("logits",logits.shape)
+                    # test_pred[j] = np.argmax(logits.detach().cpu(), axis=1)
+                    pred = np.argmax(logits.detach().cpu(), axis=1).reshape(512,512)
+                    #print("pred",pred.shape)
 
-                    # GENERATE IMAGE:
-                    pred = np.argmax(total_logits.detach().cpu(), axis=1).reshape(512,512)
                     # get prediction kinds
                     cs = np.unique(pred)
                     #print(j, cs)
@@ -684,13 +676,75 @@ if __name__ == '__main__':
                         # result_imgs: 512x512, 3. bg: [0,0,0] fg: cmap[c]
 
                     result_img = result_img.reshape((512, 512, 3))  
-                    imageio.imsave(os.path.join(des_path, "{:04d}.png".format(j)), np.uint8(result_img))
+                    imageio.imsave(os.path.join(des_path, "{:04d}_mask.png".format(j)), np.uint8(result_img))
                     j=j+1
                     
             if i == 0:
                 print("Testing is done. (one fold)")
                 break            
 
+        # Convert prediction(1,512,512) to RGB image(512,512,3)
+        #test_pred_imgs = np.empty((num_tests, 512, 512, 3))
+        #pred_imgs = np.empty((512, 512, 3))
 
 
+        """
+        i=0
+        print("Generating images...")
+        for pred in tqdm(test_pred):
+            # get prediction kinds
+            cs = np.unique(pred)
+            img = np.zeros((512, 512, 3))
+
+            #print(i, cs)
+            color_masks = np.zeros((len(cs),512, 512, 3))
+            for k,c in enumerate(cs):
+                # print( cmap[c] )
+                mask = np.zeros((512, 512))
+                ind = np.where(pred==c)
+                mask[ind[0], ind[1]] = 1
+
+                # img = viz_data(img, mask, color=cmap[c])
+                color_mask = np.zeros((512*512, 3))
+                l_loc = np.where(mask.flatten() == 1)[0]
+                color_mask[l_loc, : ] = cmap[c]
+                # color_mask: 512x512, 3. bg: [0,0,0] fg: cmap[c]
+                color_mask = color_mask.reshape((512, 512, 3))  
+                #print(color_mask)
+
+                # overlap the predict classes
+                # assumption: we only have one label per pixel. 
+                color_masks[k] = color_mask 
+
+            for color_mask in color_masks:
+                img = img + color_mask ##?
+
+            imageio.imsave(os.path.join(des_path, "{:04d}_mask.png".format(i)), np.uint8(img))
+            #print( "{:04d}_mask.png".format(i))
+            i = i+1
+        print(f"Images are generated at {des_path}")
+        """
+        # ensembling    
+        # prediction_final = []
+        # for i in range(n_split):
+        #     print(len( predictions[i]))
+        # for j in range(num_tests):
+        #     vote_box = []
+        #     for i in range(n_split):
+        #         #print(predictions[i][j])
+        #         vote_box.append(predictions[i][j])
+        #     counts = Counter(vote_box)
+        #     # get the frequency of the most.
+        #     max_count = counts.most_common(1)[0][1] 
+        #     # get the result that equals to that frequency.
+        #     out = [value for value, count in counts.most_common() if count == max_count]
+        #     # draw:
+        #     if len(out)>1: 
+        #         # flip to decide...
+        #         out = [random.choice(out)]
+        #     # turn list into single value
+        #     # print(f"==={j}=== out:",out)
+        #     out = out[0]
+        #     prediction_final.append(out)
+        # #print(prediction_final)
 

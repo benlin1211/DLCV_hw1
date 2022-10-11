@@ -445,8 +445,12 @@ if __name__ == '__main__':
         df = pd.DataFrame() # apply pd.DataFrame format 
         df["filename"] = [x.split('/')[-1] for x in filename_list]
         df["label"] = prediction_final
-        if not os.path.exists(des_path):
-            os.makedirs(des_path)
-        df.to_csv(os.path.join(des_path, f"val_{model_option}.csv"),index = False)
+        csv_name = des_path.split('/')[-1]
+        print(csv_name)
+        dest_folder = des_path.replace(csv_name,'') 
+        print(dest_folder)
+        if not os.path.exists(dest_folder):
+            os.makedirs(dest_folder)
+        df.to_csv(des_path, index = False)
 
 

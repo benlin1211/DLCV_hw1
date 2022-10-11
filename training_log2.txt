@@ -1,0 +1,277 @@
+{'src': './hw1_data/hw1_data/p2_data/validation', 'dest': 'result_1-2C', 'mode': 'test', 'checkpth': 'ckpt_1-2-deeplab-exp2', 'batch_size': 1, 'model_option': 'C', 'learning_rate': 5e-05, 'weight_decay': 0.0, 'scheduler_lr_decay_step': 1, 'scheduler_lr_decay_ratio': 0.99, 'n_epochs': 50, 'n_split': 5, 'l2_reg_lambda': 0.0001, 'resume_n': 0}
+device = cuda:1
+Mode: test
+fold 0:
+C: DeepLabV3 + Resnet50
+Loading checkpoint ckpt_1-2-deeplab-exp2/hw1-2-C_epoch0_fold0.ckpt.
+Predicting...
+Testing is done. (one fold)
+(257, 512, 512)
+(257, 512, 512)
+(257, 512, 512)
+(257, 512, 512)
+class #0 : 0.47368
+class #1 : 0.79944
+class #2 : 0.00000
+class #3 : 0.71768
+class #4 : 0.00000
+class #5 : 0.44285
+
+mean_iou: 0.405610
+
+Nope.
+{'src': './hw1_data/hw1_data/p2_data/validation', 'dest': 'result_1-2C', 'mode': 'test', 'checkpth': 'ckpt_1-2-deeplab-exp2', 'batch_size': 1, 'model_option': 'C', 'learning_rate': 5e-05, 'weight_decay': 0.0, 'scheduler_lr_decay_step': 1, 'scheduler_lr_decay_ratio': 0.99, 'n_epochs': 50, 'n_split': 5, 'l2_reg_lambda': 0.0001, 'resume_n': 1}
+device = cuda:1
+Mode: test
+fold 0:
+C: DeepLabV3 + Resnet50
+Loading checkpoint ckpt_1-2-deeplab-exp2/hw1-2-C_epoch1_fold0.ckpt.
+Predicting...
+Testing is done. (one fold)
+(257, 512, 512)
+(257, 512, 512)
+(257, 512, 512)
+(257, 512, 512)
+class #0 : 0.67085
+class #1 : 0.76478
+class #2 : 0.00523
+class #3 : 0.61793
+class #4 : 0.54567
+class #5 : 0.42418
+
+mean_iou: 0.504774
+
+Nope.
+{'src': './hw1_data/hw1_data/p2_data/validation', 'dest': 'result_1-2C', 'mode': 'test', 'checkpth': 'ckpt_1-2-deeplab-exp2', 'batch_size': 1, 'model_option': 'C', 'learning_rate': 5e-05, 'weight_decay': 0.0, 'scheduler_lr_decay_step': 1, 'scheduler_lr_decay_ratio': 0.99, 'n_epochs': 50, 'n_split': 5, 'l2_reg_lambda': 0.0001, 'resume_n': 2}
+device = cuda:1
+Mode: test
+fold 0:
+C: DeepLabV3 + Resnet50
+Loading checkpoint ckpt_1-2-deeplab-exp2/hw1-2-C_epoch2_fold0.ckpt.
+Predicting...
+Testing is done. (one fold)
+(257, 512, 512)
+(257, 512, 512)
+(257, 512, 512)
+(257, 512, 512)
+class #0 : 0.63462
+class #1 : 0.80780
+class #2 : 0.04529
+class #3 : 0.72244
+class #4 : 0.53277
+class #5 : 0.51581
+
+mean_iou: 0.543121
+
+Nope.
+{'src': './hw1_data/hw1_data/p2_data/validation', 'dest': 'result_1-2C', 'mode': 'test', 'checkpth': 'ckpt_1-2-deeplab-exp2', 'batch_size': 1, 'model_option': 'C', 'learning_rate': 5e-05, 'weight_decay': 0.0, 'scheduler_lr_decay_step': 1, 'scheduler_lr_decay_ratio': 0.99, 'n_epochs': 50, 'n_split': 5, 'l2_reg_lambda': 0.0001, 'resume_n': 3}
+device = cuda:1
+Mode: test
+fold 0:
+C: DeepLabV3 + Resnet50
+Loading checkpoint ckpt_1-2-deeplab-exp2/hw1-2-C_epoch3_fold0.ckpt.
+Predicting...
+Testing is done. (one fold)
+(257, 512, 512)
+(257, 512, 512)
+(257, 512, 512)
+(257, 512, 512)
+class #0 : 0.43997
+class #1 : 0.76906
+class #2 : 0.03734
+class #3 : 0.73419
+class #4 : 0.61414
+class #5 : 0.54008
+
+mean_iou: 0.522463
+
+Nope.
+{'src': './hw1_data/hw1_data/p2_data/validation', 'dest': 'result_1-2C', 'mode': 'test', 'checkpth': 'ckpt_1-2-deeplab-exp2', 'batch_size': 1, 'model_option': 'C', 'learning_rate': 5e-05, 'weight_decay': 0.0, 'scheduler_lr_decay_step': 1, 'scheduler_lr_decay_ratio': 0.99, 'n_epochs': 50, 'n_split': 5, 'l2_reg_lambda': 0.0001, 'resume_n': 4}
+device = cuda:1
+Mode: test
+fold 0:
+C: DeepLabV3 + Resnet50
+Loading checkpoint ckpt_1-2-deeplab-exp2/hw1-2-C_epoch4_fold0.ckpt.
+Predicting...
+Testing is done. (one fold)
+(257, 512, 512)
+(257, 512, 512)
+(257, 512, 512)
+(257, 512, 512)
+class #0 : 0.69062
+class #1 : 0.84304
+class #2 : 0.07747
+class #3 : 0.73668
+class #4 : 0.58718
+class #5 : 0.59792
+
+mean_iou: 0.588819
+
+Nope.
+{'src': './hw1_data/hw1_data/p2_data/validation', 'dest': 'result_1-2C', 'mode': 'test', 'checkpth': 'ckpt_1-2-deeplab-exp2', 'batch_size': 1, 'model_option': 'C', 'learning_rate': 5e-05, 'weight_decay': 0.0, 'scheduler_lr_decay_step': 1, 'scheduler_lr_decay_ratio': 0.99, 'n_epochs': 50, 'n_split': 5, 'l2_reg_lambda': 0.0001, 'resume_n': 5}
+device = cuda:1
+Mode: test
+fold 0:
+C: DeepLabV3 + Resnet50
+Loading checkpoint ckpt_1-2-deeplab-exp2/hw1-2-C_epoch5_fold0.ckpt.
+Predicting...
+Testing is done. (one fold)
+(257, 512, 512)
+(257, 512, 512)
+(257, 512, 512)
+(257, 512, 512)
+class #0 : 0.72024
+class #1 : 0.81662
+class #2 : 0.05686
+class #3 : 0.73090
+class #4 : 0.60980
+class #5 : 0.49055
+
+mean_iou: 0.570830
+
+Nope.
+{'src': './hw1_data/hw1_data/p2_data/validation', 'dest': 'result_1-2C', 'mode': 'test', 'checkpth': 'ckpt_1-2-deeplab-exp2', 'batch_size': 1, 'model_option': 'C', 'learning_rate': 5e-05, 'weight_decay': 0.0, 'scheduler_lr_decay_step': 1, 'scheduler_lr_decay_ratio': 0.99, 'n_epochs': 50, 'n_split': 5, 'l2_reg_lambda': 0.0001, 'resume_n': 6}
+device = cuda:1
+Mode: test
+fold 0:
+C: DeepLabV3 + Resnet50
+Loading checkpoint ckpt_1-2-deeplab-exp2/hw1-2-C_epoch6_fold0.ckpt.
+Predicting...
+Testing is done. (one fold)
+(257, 512, 512)
+(257, 512, 512)
+(257, 512, 512)
+(257, 512, 512)
+class #0 : 0.72738
+class #1 : 0.83376
+class #2 : 0.16307
+class #3 : 0.74774
+class #4 : 0.61135
+class #5 : 0.56213
+
+mean_iou: 0.607572
+
+Nope.
+{'src': './hw1_data/hw1_data/p2_data/validation', 'dest': 'result_1-2C', 'mode': 'test', 'checkpth': 'ckpt_1-2-deeplab-exp2', 'batch_size': 1, 'model_option': 'C', 'learning_rate': 5e-05, 'weight_decay': 0.0, 'scheduler_lr_decay_step': 1, 'scheduler_lr_decay_ratio': 0.99, 'n_epochs': 50, 'n_split': 5, 'l2_reg_lambda': 0.0001, 'resume_n': 7}
+device = cuda:1
+Mode: test
+fold 0:
+C: DeepLabV3 + Resnet50
+Loading checkpoint ckpt_1-2-deeplab-exp2/hw1-2-C_epoch7_fold0.ckpt.
+Predicting...
+Testing is done. (one fold)
+(257, 512, 512)
+(257, 512, 512)
+(257, 512, 512)
+(257, 512, 512)
+class #0 : 0.70737
+class #1 : 0.81379
+class #2 : 0.11299
+class #3 : 0.70944
+class #4 : 0.58774
+class #5 : 0.54285
+
+mean_iou: 0.579031
+
+Nope.
+{'src': './hw1_data/hw1_data/p2_data/validation', 'dest': 'result_1-2C', 'mode': 'test', 'checkpth': 'ckpt_1-2-deeplab-exp2', 'batch_size': 1, 'model_option': 'C', 'learning_rate': 5e-05, 'weight_decay': 0.0, 'scheduler_lr_decay_step': 1, 'scheduler_lr_decay_ratio': 0.99, 'n_epochs': 50, 'n_split': 5, 'l2_reg_lambda': 0.0001, 'resume_n': 8}
+device = cuda:1
+Mode: test
+fold 0:
+C: DeepLabV3 + Resnet50
+Loading checkpoint ckpt_1-2-deeplab-exp2/hw1-2-C_epoch8_fold0.ckpt.
+Predicting...
+Testing is done. (one fold)
+(257, 512, 512)
+(257, 512, 512)
+(257, 512, 512)
+(257, 512, 512)
+class #0 : 0.73704
+class #1 : 0.86363
+class #2 : 0.25242
+class #3 : 0.77929
+class #4 : 0.67177
+class #5 : 0.58151
+
+mean_iou: 0.647611
+
+Nope.
+{'src': './hw1_data/hw1_data/p2_data/validation', 'dest': 'result_1-2C', 'mode': 'test', 'checkpth': 'ckpt_1-2-deeplab-exp2', 'batch_size': 1, 'model_option': 'C', 'learning_rate': 5e-05, 'weight_decay': 0.0, 'scheduler_lr_decay_step': 1, 'scheduler_lr_decay_ratio': 0.99, 'n_epochs': 50, 'n_split': 5, 'l2_reg_lambda': 0.0001, 'resume_n': 9}
+device = cuda:1
+Mode: test
+fold 0:
+C: DeepLabV3 + Resnet50
+Loading checkpoint ckpt_1-2-deeplab-exp2/hw1-2-C_epoch9_fold0.ckpt.
+Predicting...
+Testing is done. (one fold)
+(257, 512, 512)
+(257, 512, 512)
+(257, 512, 512)
+(257, 512, 512)
+class #0 : 0.74919
+class #1 : 0.85967
+class #2 : 0.15233
+class #3 : 0.74549
+class #4 : 0.68394
+class #5 : 0.67172
+
+mean_iou: 0.643722
+
+Nope.
+{'src': './hw1_data/hw1_data/p2_data/validation', 'dest': 'result_1-2C', 'mode': 'test', 'checkpth': 'ckpt_1-2-deeplab-exp2', 'batch_size': 1, 'model_option': 'C', 'learning_rate': 5e-05, 'weight_decay': 0.0, 'scheduler_lr_decay_step': 1, 'scheduler_lr_decay_ratio': 0.99, 'n_epochs': 50, 'n_split': 5, 'l2_reg_lambda': 0.0001, 'resume_n': 10}
+device = cuda:1
+Mode: test
+fold 0:
+C: DeepLabV3 + Resnet50
+Loading checkpoint ckpt_1-2-deeplab-exp2/hw1-2-C_epoch10_fold0.ckpt.
+Predicting...
+Testing is done. (one fold)
+(257, 512, 512)
+(257, 512, 512)
+(257, 512, 512)
+(257, 512, 512)
+class #0 : 0.60935
+class #1 : 0.83977
+class #2 : 0.18127
+class #3 : 0.77115
+class #4 : 0.69516
+class #5 : 0.65599
+
+mean_iou: 0.625450
+
+Nope.
+{'src': './hw1_data/hw1_data/p2_data/validation', 'dest': 'result_1-2C', 'mode': 'test', 'checkpth': 'ckpt_1-2-deeplab-exp2', 'batch_size': 1, 'model_option': 'C', 'learning_rate': 5e-05, 'weight_decay': 0.0, 'scheduler_lr_decay_step': 1, 'scheduler_lr_decay_ratio': 0.99, 'n_epochs': 50, 'n_split': 5, 'l2_reg_lambda': 0.0001, 'resume_n': 11}
+device = cuda:1
+Mode: test
+fold 0:
+C: DeepLabV3 + Resnet50
+Loading checkpoint ckpt_1-2-deeplab-exp2/hw1-2-C_epoch11_fold0.ckpt.
+Predicting...
+Testing is done. (one fold)
+(257, 512, 512)
+(257, 512, 512)
+(257, 512, 512)
+(257, 512, 512)
+class #0 : 0.72881
+class #1 : 0.87397
+class #2 : 0.27387
+class #3 : 0.79348
+class #4 : 0.74490
+class #5 : 0.70506
+
+mean_iou: 0.686682
+
+Nope.
+{'src': './hw1_data/hw1_data/p2_data/validation', 'dest': 'result_1-2C', 'mode': 'test', 'checkpth': 'ckpt_1-2-deeplab-exp2', 'batch_size': 1, 'model_option': 'C', 'learning_rate': 5e-05, 'weight_decay': 0.0, 'scheduler_lr_decay_step': 1, 'scheduler_lr_decay_ratio': 0.99, 'n_epochs': 50, 'n_split': 5, 'l2_reg_lambda': 0.0001, 'resume_n': 12}
+device = cuda:1
+Mode: test
+fold 0:
+C: DeepLabV3 + Resnet50
+Loading checkpoint ckpt_1-2-deeplab-exp2/hw1-2-C_epoch12_fold0.ckpt.
+Predicting...
+Testing is done. (one fold)
+(257, 512, 512)
+(257, 512, 512)
+(257, 512, 512)
+(257, 512, 512)
+class #0 : 0.73423

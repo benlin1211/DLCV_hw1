@@ -51,6 +51,7 @@ def mean_iou_score(pred, labels):
         #print(f"tp_fp:{tp_fp}, tp_fn:{tp_fn}, tp:{tp}, tp_fp + tp_fn - tp:{tp_fp + tp_fn - tp}")
         print('class #%d : %1.5f'%(i, iou))
     print('\nmean_iou: %f\n' % mean_iou)
+    
 
     return mean_iou
 
@@ -67,4 +68,8 @@ if __name__ == '__main__':
     print(pred.shape) 
     print(labels.shape)
 
-    mean_iou_score(pred, labels)
+    mean_iou = mean_iou_score(pred, labels)
+    if mean_iou>=0.73:
+        print("We pass strong baseline!")
+    else:
+        print("Nope.")
