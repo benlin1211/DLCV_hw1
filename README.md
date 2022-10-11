@@ -45,6 +45,7 @@ https://machinelearningmastery.com/command-line-arguments-for-your-python-script
     bash ./train_hw1-2.sh ./hw1_data/hw1_data/p2_data/train .
     
 ### Run Inference Code 
+#### 1-1
 
     bash ./hw1_1.sh ./hw1_data/hw1_data/p1_data/val_50 result_1-1 
     
