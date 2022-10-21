@@ -30,7 +30,8 @@ class ImageDataset(Dataset):
     def __init__(self, path, tfm, mode, files = None):
         super(ImageDataset).__init__()
         self.path = path
-        self.files = sorted([os.path.join(path,x) for x in os.listdir(path) if x.endswith(".png")], key=lambda x: (int(x.split('/')[-1].split('_')[0]), int(x.split('/')[-1].split('_')[1].split('.')[0]))) # TODO: sort with correct order!
+        #self.files = sorted([os.path.join(path,x) for x in os.listdir(path) if x.endswith(".png")], key=lambda x: (int(x.split('/')[-1].split('_')[0]), int(x.split('/')[-1].split('_')[1].split('.')[0]))) # TODO: sort with correct order!
+        self.files = sorted([os.path.join(path,x) for x in os.listdir(path) if x.endswith(".png")])
         # Ref: https://stackoverflow.com/questions/54399946/python-glob-sorting-files-of-format-int-int-the-same-as-windows-name-sort
 
         if files != None:
@@ -284,7 +285,8 @@ if __name__ == '__main__':
     fix_random_seed()
 
     # GPU
-    device = "cuda:1" if torch.cuda.is_available() else "cpu"
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print("device:", device)
     
     train_tfm = transforms.Compose([
         transforms.Resize((224, 224)), # Upsampling
