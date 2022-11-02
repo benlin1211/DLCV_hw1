@@ -406,7 +406,7 @@ if __name__ == '__main__':
                 print("B: Resnet")
                 model = Resnet().to(device)
 
-            model.load_state_dict(torch.load(f"./ckpt/hw1-1-{model_option}_fold{i}.ckpt"))
+            model.load_state_dict(torch.load(f"./ckpt/hw1-1-{model_option}_fold{i}.ckpt", map_location='cuda'))
             model.eval()
             
             with torch.no_grad():

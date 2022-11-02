@@ -639,7 +639,7 @@ if __name__ == '__main__':
             for j,ckpt_name in enumerate(ckpt_names):
 
                 print(f"Loading checkpoint {os.path.join(model_path, ckpt_name)}.")
-                models[j].load_state_dict(torch.load( os.path.join(model_path, ckpt_name)))
+                models[j].load_state_dict(torch.load( os.path.join(model_path, ckpt_name), map_location='cuda'))
                 models[j].eval()
 
 
